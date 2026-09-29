@@ -1,0 +1,20 @@
+# Credenciais e configurações locais
+.env
+.env.*
+!.env.example
+
+# Ambiente virtual
+.venv/
+venv/
+
+# Arquivos gerados pelo Python
+__pycache__/
+*.py[cod]
+
+# Resultados locais dos experimentos
+results/*.csv
+results/*.json
+
+# Configurações de editores
+.vscode/
+.idea/
