@@ -12,8 +12,8 @@ __pycache__/
 *.py[cod]
 
 # Resultados locais dos experimentos
-results/*.csv
-results/*.json
+results/*
+!results/.gitkeep
 
 # Configurações de editores
 .vscode/
