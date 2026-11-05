@@ -5,6 +5,7 @@
 
 # Ambiente virtual
 .venv/
+.pnpm-store/
 venv/
 
 # Arquivos gerados pelo Python

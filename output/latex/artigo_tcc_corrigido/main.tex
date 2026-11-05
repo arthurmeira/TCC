@@ -1,0 +1,370 @@
+% Artigo revisado a partir das observações do orientador no PDF de 06/11/2026.
+% Projeto autocontido: a classe UNESC.cls acompanha este arquivo.
+\documentclass{UNESC}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\renewcommand{\rmdefault}{phv}
+\renewcommand{\sfdefault}{phv}
+\usepackage[brazilian]{babel}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{quoting}
+\usepackage[labelsep=none]{caption}
+\DeclareCaptionLabelFormat{figuracomtraco}{#1~#2 --}
+\DeclareCaptionLabelFormat{tabelacomtraco}{#1~#2 --}
+\captionsetup[figure]{labelformat=figuracomtraco,labelsep=space}
+\captionsetup[table]{labelformat=tabelacomtraco,labelsep=space}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage[hang,flushmargin]{footmisc}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{setspace}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usepackage[alf,recuo=0.0cm,abnt-emphasize=bf]{abntex2cite}
+
+\hypersetup{setpagesize=false,colorlinks=true,urlcolor=blue,linkcolor=black,citecolor=black}
+\urlstyle{same}
+\newcommand{\codigo}[1]{\texttt{#1}}
+\newcommand{\ms}{\,ms}
+\newcommand{\perc}{\%}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,columns=fullflexible,
+  backgroundcolor=\color{gray!6},keywordstyle=\bfseries\color{blue!55!black},
+  commentstyle=\itshape\color{green!35!black},showstringspaces=false}
+
+\title{ANÁLISE PREVENTIVA E OTIMIZAÇÃO DE CONSULTAS SQL COM BASE EM ESTATÍSTICAS E PLANOS DE EXECUÇÃO EM BANCOS DE DADOS RELACIONAIS}
+\author{Arthur Meira\footnote{Curso de Ciência da Computação, Universidade do Extremo Sul Catarinense (Unesc), Criciúma -- Santa Catarina -- Brasil. arthurmeiraprog@unesc.net},
+Marcel Campos Inocencio\footnote{Orientador, Curso de Ciência da Computação, Universidade do Extremo Sul Catarinense (Unesc), Criciúma -- Santa Catarina -- Brasil. marcel.inocencio@gmail.com}}
+
+\begin{document}
+\onehalfspacing
+\maketitle
+
+\noindent\textbf{Resumo:} Consultas SQL lentas podem gerar gargalos, elevar o tempo de resposta e comprometer sistemas que dependem de bancos de dados relacionais. Este trabalho desenvolveu e avaliou um protótipo que combina estatísticas históricas do PostgreSQL com planos estimados de execução para selecionar consultas relevantes e apontar sinais de atenção antes de executar uma intervenção. Construiu-se uma base experimental com cinco tabelas e 4.648.714 registros, uma carga com 12 consultas e 730 chamadas, um coletor baseado na extensão \codigo{pg\_stat\_statements}, um analisador heurístico e uma interface web local. Na carga principal, a consulta Q05 concentrou o maior tempo acumulado, com 42,47 segundos em 15 chamadas, enquanto Q12 apresentou o maior tempo médio, 6,80 segundos, e Q01 foi a mais frequente, com 500 chamadas e apenas 9,25 milissegundos acumulados no servidor. A análise preventiva da Q05 detectou varredura sequencial, função aplicada à coluna de data e subestimação de cardinalidade próxima de 100 vezes. Uma reescrita por intervalo de datas reduziu o erro de cardinalidade para 0,05\perc, sem que o protótipo alegasse ganho de tempo sem execução. Em um experimento controlado com Q09, a substituição de \codigo{LOWER(email)} por comparação direta preservou o resultado no conjunto testado, permitiu varredura por índice e reduziu o tempo médio do servidor de 26,33 para 0,0303 milissegundo em 100 execuções intercaladas, redução de 99,88\perc. Os resultados mostram que a combinação de histórico, plano e regras explicáveis apoia o diagnóstico e a priorização, desde que as sugestões sejam confirmadas por testes de equivalência e desempenho no contexto avaliado.
+
+\vspace{0.5em}
+\noindent\textbf{Palavras-chave:} bancos de dados relacionais; consultas SQL; otimização de consultas; PostgreSQL; planos de execução.
+
+\vspace{1em}
+\noindent\textbf{ABSTRACT:} Slow SQL queries can create bottlenecks, increase response time, and impair systems that rely on relational databases. This study developed and evaluated a prototype that combines PostgreSQL historical statistics with estimated execution plans to select relevant queries and identify warning signs before an intervention is executed. An experimental database with five tables and 4,648,714 rows was built, together with a workload of 12 queries and 730 calls, a collector based on the \codigo{pg\_stat\_statements} extension, a heuristic analyzer, and a local web interface. In the main workload, query Q05 had the highest cumulative time, 42.47 seconds in 15 calls; Q12 had the highest mean time, 6.80 seconds; and Q01 was the most frequent, with 500 calls and only 9.25 milliseconds accumulated on the server. Preventive analysis of Q05 found a sequential scan, a function applied to a date column, and a cardinality underestimate of approximately 100 times. Rewriting the predicate as a date range reduced the cardinality error to 0.05\perc, while the prototype correctly avoided claiming a runtime gain without execution. In a controlled experiment with Q09, replacing \codigo{LOWER(email)} with a direct comparison preserved the result in the tested data set, enabled an index scan, and reduced mean server time from 26.33 to 0.0303 milliseconds over 100 interleaved executions, a 99.88\perc reduction. The results indicate that combining history, plans, and explainable rules supports diagnosis and prioritization, provided that recommendations are confirmed by equivalence and performance tests under the evaluated conditions.
+
+\vspace{0.5em}
+\noindent\textbf{Keywords:} relational databases; SQL queries; query optimization; PostgreSQL; execution plans.
+
+\section{INTRODUÇÃO}
+
+A linguagem SQL (\textit{Structured Query Language}) permite declarar os dados desejados sem obrigar o usuário a indicar cada operação física necessária para obtê-los. Essa separação transfere ao sistema gerenciador de banco de dados (SGBD) a tarefa de escolher entre caminhos possíveis, como varreduras sequenciais, acessos por índice, diferentes ordens de junção e métodos de agregação. A decisão depende da estrutura da consulta, dos índices, da distribuição dos valores e das estimativas produzidas pelo otimizador \cite{lan2021optimizer}.
+
+O plano escolhido nem sempre é o mais adequado para os dados presentes. A estimativa de cardinalidade prevê quantas linhas cada operação produzirá e alimenta o modelo de custos do SGBD. Quando essa estimativa se distancia do resultado observado, o custo relativo das alternativas também pode ser distorcido. Consultas sintaticamente corretas podem, assim, consumir recursos de forma desproporcional, sobretudo quando realizam leituras amplas, ordenações volumosas, junções repetidas ou filtros que dificultam o uso de índices.
+
+As propriedades dos dados oferecem informações adicionais para a otimização. Restrições de unicidade, dependências funcionais e relações entre atributos podem permitir a simplificação de operações ou melhorar as estimativas do otimizador. Essas propriedades, entretanto, precisam ser válidas no conjunto analisado; uma reescrita baseada em uma suposição incorreta pode mudar a resposta da consulta \cite{kossmann2022dependencies}. Dessa forma, a otimização exige duas verificações complementares: avaliar o possível benefício de uma alteração e confirmar que sua semântica continua compatível com a consulta original.
+
+O diagnóstico também depende do comportamento acumulado. Uma consulta lenta executada uma vez apresenta impacto distinto de uma consulta curta repetida milhares de vezes. A extensão \codigo{pg\_stat\_statements} agrega quantidade de chamadas, tempo total, tempo médio e linhas devolvidas por comandos normalizados, permitindo observar o efeito histórico no servidor \cite{postgresql2026pgstat}. Já o comando \codigo{EXPLAIN} expõe o plano proposto para uma consulta; sem a opção \codigo{ANALYZE}, ele não executa o comando e pode ser usado para uma inspeção preventiva \cite{postgresql2026explain}.
+
+A necessidade prática que fundamenta esta pesquisa é a redução de gargalos gerados por consultas lentas. Sem um processo de priorização, equipes podem investigar consultas de baixo impacto ou aplicar índices e reescritas sem evidência suficiente. Além do custo de leitura, índices adicionais aumentam o armazenamento e o trabalho de escrita. Uma ferramenta de apoio deve, portanto, explicar por que um caso merece atenção, distinguir estimativa de medição e apresentar cada sugestão como hipótese a ser validada.
+
+Nesse contexto, formulou-se a seguinte questão de pesquisa: como combinar estatísticas históricas e planos de execução para identificar consultas SQL potencialmente problemáticas, explicar os sinais encontrados e apoiar a validação de melhorias em um banco de dados relacional?
+
+O objetivo geral foi desenvolver e avaliar um processo automatizado de análise preventiva de consultas SQL baseado em estatísticas e planos de execução. Os objetivos específicos consistiram em: construir uma base experimental reprodutível; executar uma carga com perfis variados; coletar e classificar métricas históricas; identificar padrões de atenção nos planos; comparar consultas originais e alternativas sem executar o \codigo{SELECT} durante o diagnóstico; validar ao menos uma intervenção sob condições controladas; e disponibilizar os resultados em uma interface visual compreensível.
+
+A contribuição do trabalho está na integração dessas etapas em um protótipo explicável. O sistema não substitui o especialista nem aplica otimizações automaticamente. Ele reúne evidências, atribui um nível de atenção, descreve as limitações da análise e permite comparar planos. Essa abordagem reduz o risco de confundir custo estimado com tempo real e torna explícita a necessidade de testar equivalência e desempenho antes de adotar uma alteração.
+
+\section{FUNDAMENTAÇÃO TEÓRICA}
+
+\subsection{Otimização e planos de execução}
+
+O otimizador transforma uma expressão SQL em um plano executável. Conforme a revisão de \citeonline{lan2021optimizer}, esse processo reúne três problemas: estimar cardinalidades, atribuir custos às operações e enumerar alternativas de plano. Os componentes são interdependentes. Uma estimativa incorreta pode favorecer uma ordem de junção inadequada; um modelo de custos pouco representativo do ambiente pode comparar de forma imperfeita acessos por índice e varreduras; e uma busca limitada pode deixar de avaliar uma alternativa melhor.
+
+No PostgreSQL, o plano é representado como uma árvore. Cada nó informa a operação, o custo inicial, o custo total e a quantidade estimada de linhas. Nós como \codigo{Seq Scan}, \codigo{Index Scan}, \codigo{Hash Join}, \codigo{Nested Loop}, \codigo{Sort} e \codigo{Aggregate} descrevem decisões distintas. O custo é uma unidade interna usada para comparar alternativas e não corresponde a milissegundos. Essa diferença é central neste trabalho: um plano estimado fundamenta hipóteses, enquanto a duração deve ser obtida por medição.
+
+O uso de \codigo{EXPLAIN (ANALYZE FALSE, FORMAT JSON)} oferece uma estrutura legível por programa sem executar a consulta. A ausência de execução evita que uma análise exploratória de um \codigo{SELECT} volumoso sobrecarregue o banco ou altere o histórico que se pretende observar. Em contrapartida, o plano contém estimativas e não fornece o número real de linhas de cada nó. Por isso, o protótipo relaciona o plano com a média histórica de linhas disponível em \codigo{pg\_stat\_statements}, sem apresentar essa comparação como substituta de um \codigo{EXPLAIN ANALYZE} controlado.
+
+\subsection{Estatísticas históricas e priorização}
+
+O \codigo{pg\_stat\_statements} agrupa comandos de estrutura equivalente e associa a cada grupo um identificador de consulta. Literais podem ser normalizados, o que permite agregar chamadas que diferem apenas nos valores. Entre as métricas úteis estão \codigo{calls}, \codigo{total\_exec\_time}, \codigo{mean\_exec\_time} e \codigo{rows}. A documentação ressalta que os dados são cumulativos e dependem da configuração e do reinício das estatísticas \cite{postgresql2026pgstat}.
+
+Tempo total, tempo médio e frequência respondem a perguntas diferentes. O tempo total sinaliza consumo acumulado no período; o tempo médio ajuda a localizar uma chamada individualmente cara; e a frequência revela comandos recorrentes. A multiplicação do tempo médio pelo número de chamadas aproxima o próprio tempo total e, portanto, não cria uma dimensão independente. A seleção empregada nesta pesquisa preservou as três métricas e evitou condensá-las em um único ranking opaco.
+
+\subsection{Padrões de atenção e limites das recomendações}
+
+Uma varredura sequencial não constitui, isoladamente, um erro. Ela pode ser adequada para tabelas pequenas ou consultas que retornam grande parte dos registros. De modo semelhante, um índice não garante ganho e pode ser ignorado pelo otimizador quando a baixa seletividade torna a leitura sequencial mais econômica. O protótipo só eleva a atenção para uma varredura com filtro quando a relação possui pelo menos 50 mil linhas, e a mensagem orienta a verificar seletividade e índices existentes.
+
+Funções aplicadas diretamente a colunas filtradas, como \codigo{LOWER(email)} ou \codigo{EXTRACT(YEAR FROM data)}, podem impedir o uso direto de um índice comum. Uma reescrita pode comparar a coluna com um valor já normalizado ou expressar um ano como intervalo de datas. A equivalência depende dos dados e das regras de negócio. No caso do e-mail, a comparação direta somente preserva o comportamento se a capitalização não carregar significado e os valores estiverem normalizados; no caso das datas, os limites do intervalo e o tipo temporal precisam ser considerados.
+
+\section{MATERIAIS E MÉTODOS}
+
+\subsection{Caracterização e etapas da pesquisa}
+
+Realizou-se uma pesquisa aplicada, de abordagem quantitativa e caráter experimental. A solução foi desenvolvida em etapas encadeadas, cada uma com objetivo definido. Primeiro, construiu-se a base para fornecer volume, relacionamentos e distribuições controladas. Em seguida, executou-se a carga para produzir histórico mensurável. Depois, coletaram-se e classificaram-se as estatísticas. Na quarta etapa, os planos estimados foram percorridos por regras heurísticas. Por fim, compararam-se alternativas e executou-se um experimento controlado de validação.
+
+A Figura~\ref{fig:fluxo} apresenta o fluxo completo. As setas contínuas mostram o processamento principal; a seta de retorno representa o ciclo de revisão, no qual uma alternativa só pode ser recomendada após a comparação e a validação. A interface consulta os mesmos módulos utilizados pela linha de comando, evitando duplicação das regras de análise.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=7mm and 7mm,
+  bloco/.style={rectangle,rounded corners,draw=black,fill=gray!8,align=center,minimum width=3.0cm,minimum height=0.9cm,font=\small},
+  decisao/.style={diamond,aspect=2.2,draw=black,fill=gray!8,align=center,font=\small},
+  seta/.style={-{Latex[length=2mm]},thick}]
+\node[bloco] (base) {Base experimental\\e dados sintéticos};
+\node[bloco,right=of base] (carga) {Carga: 12 consultas\\e 730 chamadas};
+\node[bloco,right=of carga] (hist) {Histórico em\\\codigo{pg\_stat\_statements}};
+\node[bloco,below=of hist] (plano) {Plano estimado\\sem executar o SELECT};
+\node[bloco,left=of plano] (regras) {Regras heurísticas\\e nível de atenção};
+\node[bloco,left=of regras] (comparar) {Comparação entre\\original e alternativa};
+\node[decisao,below=10mm of regras] (validar) {Equivalência e\\desempenho confirmados?};
+\node[bloco,left=of validar] (documentar) {Documentar resultado,\\limites e decisão};
+\draw[seta] (base) -- (carga);
+\draw[seta] (carga) -- (hist);
+\draw[seta] (hist) -- (plano);
+\draw[seta] (plano) -- (regras);
+\draw[seta] (regras) -- (comparar);
+\draw[seta] (comparar) -- (validar);
+\draw[seta] (validar) -- node[above,font=\scriptsize]{sim} (documentar);
+\draw[seta] (validar.east) -- ++(9mm,0) |- node[pos=.25,right,font=\scriptsize]{não} (plano.east);
+\end{tikzpicture}
+\caption{Fluxo da solução proposta}
+\label{fig:fluxo}
+\end{figure}
+
+\subsection{Ambiente de desenvolvimento e execução}
+
+O ambiente principal utilizou Windows 11 Pro de 64 bits, processador AMD Ryzen 5 5600X com seis núcleos e 12 processadores lógicos, 31,9~GB de memória RAM e unidade de estado sólido Kingston NV2 de 2~TB. Durante as rodadas, os programas foram executados localmente, isto é, aplicação e SGBD compartilharam a mesma máquina. Essa configuração reduz a interferência de rede, mas faz com que cliente e servidor disputem processador, memória e armazenamento.
+
+Empregaram-se PostgreSQL 18.1, Python 3.14.3 e Psycopg 3.3.6 na rodada experimental principal. Após a reinstalação do computador, o funcionamento foi novamente conferido com PostgreSQL 18.6 e Python 3.14.7; os tempos das duas instalações não foram misturados na comparação. O DBeaver apoiou a administração e a inspeção manual. Um ambiente virtual isolou as bibliotecas Python, e variáveis de ambiente mantiveram as credenciais fora do código versionado.
+
+O repositório foi dividido em scripts SQL, módulos Python, interface web, testes, documentação e resultados exportados. A separação permitiu reconstruir a base, repetir a carga e analisar uma consulta de forma independente. CSV e JSON foram usados para preservar resultados tabulares e metadados de cada rodada.
+
+\subsection{Modelo de dados experimental}
+
+Criou-se o banco \codigo{tcc\_sql\_optimizer} com cinco tabelas: \codigo{clientes}, \codigo{produtos}, \codigo{pedidos}, \codigo{itens\_pedido} e \codigo{pagamentos}. Um cliente pode possuir vários pedidos; cada pedido possui de dois a três itens; cada item referencia um produto; e cada pedido possui um pagamento. Chaves primárias identificam os registros e chaves estrangeiras mantêm a integridade entre as entidades.
+
+\begin{table}[H]
+\centering
+\caption{Composição da base experimental}
+\label{tab:base}
+\small
+\begin{tabularx}{\textwidth}{l r Y}
+\toprule
+\textbf{Tabela} & \textbf{Registros} & \textbf{Finalidade no experimento}\\
+\midrule
+clientes & 100.000 & Filtros por chave, cidade, situação e e-mail; origem dos pedidos.\\
+produtos & 50.000 & Filtros por categoria, preço, estoque e popularidade.\\
+pedidos & 1.000.000 & Datas, estados, valores, junções e agregações temporais.\\
+itens\_pedido & 2.498.714 & Relação muitos-para-muitos entre pedidos e produtos e leitura volumosa.\\
+pagamentos & 1.000.000 & Relação um-para-um com pedido, método e situação do pagamento.\\
+\midrule
+\textbf{Total} & \textbf{4.648.714} & Cenário suficientemente amplo para diferenciar acessos seletivos e leituras extensas.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Os volumes foram escolhidos para produzir comportamentos contrastantes em uma máquina pessoal. Cem mil clientes e 50 mil produtos permitem filtros seletivos e buscas indexadas sem dominar o armazenamento. Um milhão de pedidos torna filtros temporais e junções relevantes para o planejador. A presença de aproximadamente 2,5 itens por pedido eleva \codigo{itens\_pedido} a 2.498.714 linhas, permitindo observar o custo de respostas extensas. O total de 4.648.714 registros continuou viável para reconstrução e repetição local, condição necessária para o trabalho acadêmico.
+
+Os dados foram produzidos por um gerador Python com semente 2026 e carregados em lotes de 10 mil linhas por meio de \codigo{COPY}, operação indicada para transferência em massa \cite{postgresql2026copy}. A semente fixa tornou a sequência pseudoaleatória repetível quando mantidos código e configurações.
+
+A distribuição foi planejada para não ser uniforme. Dez cidades brasileiras receberam pesos distintos. Cerca de 95\perc dos clientes e 97\perc dos produtos ficaram ativos, e 8\perc dos produtos foram gerados sem estoque. Oitenta por cento dos pedidos foram associados ao primeiro quinto dos clientes, aproximando uma concentração de atividade; a validação observou 80,02\perc. As datas foram distribuídas entre 2024, 2025 e 2026 com pesos de 20\perc, 30\perc e 50\perc. As situações dos pedidos receberam pesos de 12\perc pendentes, 13\perc pagos, 20\perc enviados, 48\perc entregues e 7\perc cancelados.
+
+Cada pedido recebeu dois ou três itens. Setenta por cento das escolhas de produto concentraram-se no primeiro décimo do catálogo, com variações de quantidade e desconto. O valor total do pedido foi calculado pelos itens, e o pagamento foi gerado de acordo com a situação do pedido. Ao término da carga, verificaram-se chaves órfãs, totais incompatíveis e relações ausentes; os cinco indicadores de inconsistência adotados retornaram zero. A base representa um cenário controlado e não pretende reproduzir integralmente uma empresa real.
+
+\subsection{Carga de consultas}
+
+Foram definidas 12 consultas, identificadas de Q01 a Q12. O conjunto cobre busca por chave, filtros compostos, junções, agregações, ordenações, subconsultas e retornos volumosos. A frequência variou intencionalmente entre uma e 500 chamadas, totalizando 730. A diferença permitiu comparar impacto acumulado, custo médio e recorrência sem assumir que a consulta mais lenta seria também a mais frequente.
+
+\begin{table}[H]
+\centering
+\caption{Perfil da carga experimental}
+\label{tab:carga}
+\small
+\begin{tabularx}{\textwidth}{c r Y}
+\toprule
+\textbf{ID} & \textbf{Chamadas} & \textbf{Operação predominante}\\
+\midrule
+Q01 & 500 & Busca de cliente pela chave primária.\\
+Q02 & 100 & Produtos filtrados por categoria, preço e ordenação com limite.\\
+Q03 & 60 & Pedidos de um cliente.\\
+Q04 & 20 & Seleção ampla de pedidos cancelados.\\
+Q05 & 15 & Junção de pedidos e clientes com extração do ano da data.\\
+Q06 & 10 & Múltiplas junções e agregação.\\
+Q07 & 8 & Agregação mensal em intervalo de datas.\\
+Q08 & 6 & Maiores pedidos por ordenação.\\
+Q09 & 5 & Busca de e-mail com \codigo{LOWER}.\\
+Q10 & 3 & Subconsulta e resposta extensa.\\
+Q11 & 2 & Subconsulta correlacionada.\\
+Q12 & 1 & Leitura integral de itens de pedido.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Antes da carga completa, executou-se uma chamada de cada consulta para detectar falhas funcionais. Depois, reiniciaram-se as estatísticas da janela experimental e executaram-se 730 chamadas com valores de filtro fixos. A duração medida pelo cliente Python foi armazenada separadamente das métricas do servidor. Essa distinção evita atribuir ao PostgreSQL o custo de transferência, conversão e processamento no cliente.
+
+\subsection{Coleta e análise preventiva}
+
+O coletor consultou \codigo{pg\_stat\_statements} para o banco e usuário do experimento e filtrou comandos relacionados às tabelas avaliadas. Para cada consulta, foram preservados identificador, texto normalizado, chamadas, tempo total, tempo médio e linhas. Os rankings por tempo total, tempo médio e frequência foram exportados em CSV e JSON.
+
+O analisador recebeu um único comando \codigo{SELECT}. Comandos de escrita, \codigo{SELECT INTO}, expressões \codigo{WITH} e múltiplas instruções foram rejeitados para restringir o escopo. O plano foi solicitado com \codigo{ANALYZE FALSE}, custos, configurações, resumo e formato JSON. O texto foi percorrido recursivamente para contar nós, relações, filtros, métodos de acesso e quantidades estimadas.
+
+As regras atribuíram pontos a sinais observáveis: um ponto para \codigo{SELECT *}; três para varredura sequencial com filtro em relação com pelo menos 50 mil linhas; dois para função aplicada a coluna filtrada; dois para ordenação de pelo menos 10 mil linhas; dois para laço aninhado cuja multiplicação estimada dos filhos alcançasse um milhão; três para saída estimada de ao menos 100 mil linhas; três para divergência de cardinalidade de dez vezes ou mais; e dois para subplano. A soma foi limitada a dez. Escores de zero a dois foram classificados como atenção baixa, de três a seis como média e de sete a dez como alta.
+
+Cada ocorrência produziu evidência e sugestão textual. Uma varredura gerou orientação para verificar seletividade e índices, e não a criação automática de um índice. Uma função em filtro gerou alternativas condicionais, como intervalo de datas ou índice de expressão. O resultado deixou explícito que as recomendações eram hipóteses.
+
+\subsection{Comparação e validação}
+
+A comparação preventiva executou o mesmo processo de \codigo{EXPLAIN} para a consulta original e para a alternativa. Foram confrontados nó principal, custo total, linhas estimadas, quantidade de nós, planejamento, sinais e nível de atenção. Nenhum dos dois comandos foi executado nessa etapa.
+
+Para a validação real, escolheu-se Q09 porque a alternativa apresentava mudança clara no método de acesso e podia ter a equivalência verificada. A forma original aplicava \codigo{LOWER} à coluna indexada; a alternativa comparava diretamente um e-mail já normalizado. Antes da medição, confirmou-se que todos os e-mails da base estavam em minúsculas e que as duas consultas retornavam a mesma linha para o valor testado.
+
+Executaram-se 100 chamadas de cada forma, em ordem intercalada pseudoaleatória com semente 2026. A intercalação reduziu a associação entre uma forma e um período específico da rodada. Registraram-se tempo do servidor e tempo do cliente. O experimento foi executado em uma máquina, sobre uma base e um valor de parâmetro; por isso, os resultados não foram extrapolados para qualquer distribuição.
+
+\subsection{Interface e verificação do protótipo}
+
+Construiu-se uma interface web local servida em \codigo{127.0.0.1:8765}. A página inicial resume objetivo, componentes e limites. A página de análise recebe uma consulta ou exemplo e apresenta plano, histórico e achados. A comparação exibe original e alternativa lado a lado. A seção didática explica os conceitos usados pelo sistema.
+
+Sete testes automatizados verificaram rotas, validações e respostas da interface. Na integração com o PostgreSQL, confirmou-se que a análise e a comparação não alteraram as 730 chamadas acumuladas, que identificadores de consulta foram preservados como texto, que SQL inválido foi rejeitado e que uma consulta sem histórico ainda recebeu análise de plano. Também se verificou o contraste esperado entre varredura sequencial e acesso por índice no caso Q09.
+
+\section{RESULTADOS E DISCUSSÃO}
+
+\subsection{Carga e classificação histórica}
+
+O teste funcional das 12 consultas terminou sem erro em aproximadamente 14,3 segundos no cliente. A carga de 730 chamadas levou aproximadamente 103,2 segundos. O coletor encontrou as 12 consultas experimentais e descartou entradas administrativas ou externas ao conjunto.
+
+Os critérios de classificação destacaram casos diferentes. Q05 apresentou o maior tempo acumulado no servidor: 42.472,08\ms em 15 chamadas, média de 2.831,47\ms e 7.495.140 linhas acumuladas. Q12 apresentou o maior tempo médio, 6.795,63\ms, mas teve uma única chamada e retornou 2.498.714 linhas. Q01 foi executada 500 vezes e acumulou somente 9,25\ms, com média próxima de 0,02\ms.
+
+\begin{table}[H]
+\centering
+\caption{Consultas destacadas pelos critérios de priorização}
+\label{tab:ranking}
+\small
+\begin{tabularx}{\textwidth}{c r r r Y}
+\toprule
+\textbf{ID} & \textbf{Chamadas} & \textbf{Tempo total} & \textbf{Tempo médio} & \textbf{Interpretação}\\
+\midrule
+Q05 & 15 & 42.472,08\ms & 2.831,47\ms & Maior impacto acumulado na janela.\\
+Q12 & 1 & 6.795,63\ms & 6.795,63\ms & Maior duração individual e resposta muito extensa.\\
+Q01 & 500 & 9,25\ms & 0,02\ms & Maior frequência, com baixo impacto acumulado.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+O resultado confirma que frequência não equivale a custo e que uma única classificação seria insuficiente. Q12 não deve ser comparada diretamente a buscas seletivas, pois a própria solicitação exige milhões de linhas. Nesse caso, uma eventual melhoria pode depender de paginação ou redução do resultado no consumidor, e não apenas do plano. Q05 reuniu tempo total elevado, múltiplas chamadas e filtro suscetível a reescrita, tornando-se o primeiro caso de diagnóstico.
+
+\subsection{Análise preventiva da consulta Q05}
+
+A Q05 buscava pedidos de 2026 e os dados de seus clientes. Sua forma original aplicava \codigo{EXTRACT(YEAR FROM p.data\_pedido) = 2026}. O plano estimado possuía nó principal \codigo{Gather}, cinco nós, custo total 19.003 e 5.000 linhas de saída. O histórico registrava média de 499.676 linhas por execução, produzindo subestimação próxima de 99,9 vezes.
+
+O analisador marcou \codigo{SELECT *}, varredura sequencial com filtro em \codigo{pedidos}, função aplicada à coluna de data e grande divergência de cardinalidade. O nível de atenção atingiu 9/10. A mensagem não afirmou que a varredura era incorreta: como metade dos pedidos estava concentrada em 2026, a consulta devolvia parte expressiva da tabela e uma varredura podia continuar adequada.
+
+A alternativa substituiu a função por limites: \codigo{data\_pedido >= DATE '2026-01-01'} e \codigo{data\_pedido < DATE '2027-01-01'}. O plano estimou 499.434 linhas, erro de aproximadamente 0,05\perc em relação à média histórica. O custo subiu para 38.633,07 e o nó principal tornou-se \codigo{Hash Join}. O aumento de custo não significa regressão medida, assim como a melhor cardinalidade não comprova redução de tempo.
+
+Esse caso demonstra o propósito preventivo do sistema. A reescrita removeu a função e melhorou a representação da seletividade, mas a consulta permaneceu ampla e com atenção alta, 7/10. A conclusão correta foi recomendar um experimento controlado caso a alteração fosse candidata a uso, em vez de anunciar uma otimização com base no custo estimado.
+
+\subsection{Validação da consulta Q09}
+
+Na Q09, a forma original era equivalente a \codigo{WHERE LOWER(email) = 'valor'} e gerava \codigo{Seq Scan}. O plano apresentou custo 2.868, estimativa de 500 linhas e atenção 8/10. O histórico do valor avaliado indicava uma linha, de modo que a estimativa excedia o observado em 500 vezes.
+
+Como a geração havia normalizado todos os e-mails para minúsculas, avaliou-se a comparação direta \codigo{WHERE email = 'valor'}. O plano alternativo usou \codigo{Index Scan}, custo 8,44, estimativa de uma linha e atenção 0/10. A diferença preventiva de custo foi 99,71\perc, mas a conclusão de desempenho somente foi formulada após a rodada real.
+
+\begin{table}[H]
+\centering
+\caption{Resultado do experimento controlado da Q09}
+\label{tab:q09}
+\small
+\begin{tabularx}{\textwidth}{l r r r}
+\toprule
+\textbf{Métrica} & \textbf{Original} & \textbf{Alternativa} & \textbf{Redução}\\
+\midrule
+Execuções & 100 & 100 & --\\
+Tempo total no servidor & 2.633,00\ms & 3,03\ms & 99,88\perc\\
+Tempo médio no servidor & 26,3300\ms & 0,0303\ms & 99,88\perc\\
+Tempo total no cliente & 2.671,49\ms & 39,64\ms & 98,52\perc\\
+Tempo médio no cliente & 26,7149\ms & 0,3964\ms & 98,52\perc\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+As duas formas retornaram a mesma linha nas verificações realizadas. A alternativa foi aproximadamente 869 vezes mais rápida na métrica média do servidor e 67 vezes mais rápida na métrica do cliente. A diferença entre os fatores decorre do custo fixo de chamada, transporte e processamento no cliente, que se torna proporcionalmente maior quando o servidor responde em poucos microssegundos.
+
+A validade semântica está condicionada à normalização. Se o sistema permitisse letras maiúsculas e exigisse comparação sem distinção de caixa, a substituição direta poderia alterar o resultado. Nesse cenário, poderiam ser estudados um índice de expressão sobre \codigo{LOWER(email)}, um tipo com comportamento apropriado ou normalização obrigatória na escrita. A decisão pertence ao modelo de dados e não pode ser inferida apenas do plano.
+
+\subsection{Comportamento da interface}
+
+A interface tornou visível a diferença entre histórico e plano. O usuário seleciona um exemplo ou cola um \codigo{SELECT}; o sistema informa que a consulta não será executada, mostra o identificador estimado, o nó principal, o custo e as relações envolvidas, e lista cada sinal com evidência e sugestão. Quando existe histórico, chamadas, tempo total, média e linhas aparecem em bloco separado.
+
+Na comparação, as duas consultas recebem cartões simétricos. Essa organização evita que uma porcentagem isolada seja interpretada como ganho real. Textos auxiliares explicam que custo é uma unidade do planejador e que a alternativa precisa ser validada. A seção de aprendizado descreve varredura sequencial, índice, cardinalidade e diferença entre \codigo{EXPLAIN} e \codigo{EXPLAIN ANALYZE}.
+
+O comportamento de segurança do protótipo foi confirmado pela integração: ao analisar ou comparar, o contador das 730 chamadas não se alterou. Assim, o sistema cumpriu a proposta de inspeção preventiva. A restrição a um único \codigo{SELECT} reduz a superfície de uso, embora um analisador sintático dedicado seja indicado para evolução futura.
+
+\subsection{Atendimento aos objetivos}
+
+O objetivo de construir um cenário reproduzível foi atendido pela semente fixa, pelos scripts de criação e pela validação de consistência. A coleta e a priorização foram demonstradas pela correspondência das 12 consultas e 730 chamadas. A análise dos planos localizou sinais explicáveis em Q05 e Q09. A comparação preventiva distinguiu melhora de estimativa de ganho real. A validação de Q09 comprovou, no cenário avaliado, redução de tempo com preservação do resultado. Por fim, a interface reuniu as funções em uma apresentação visual utilizável na demonstração do TCC.
+
+O resultado também revelou situações em que a ferramenta deve se conter. Q05 apresentou cardinalidade muito melhor após a reescrita, porém continuou retornando aproximadamente metade dos pedidos; não houve base para prometer aceleração. Q12 foi lenta porque devolveu milhões de linhas, o que sugere revisar a necessidade do consumidor. Esses casos são relevantes porque mostram que um analisador confiável precisa comunicar incerteza e contexto.
+
+\subsection{Ameaças à validade}
+
+A validade interna é limitada pela execução local e pelo estado de cache. A intercalação adotada em Q09 reduz, mas não elimina, efeitos temporais. Uma quantidade maior de rodadas independentes permitiria calcular dispersão e intervalos de confiança. Os valores fixos dos filtros também restringem a análise, pois a seletividade pode mudar conforme o parâmetro.
+
+A validade externa é limitada pelo uso de dados sintéticos, por uma única máquina e pelo PostgreSQL. As distribuições foram planejadas para exercitar operações, e não derivadas de tráfego empresarial. Outros SGBDs possuem estruturas de plano, estatísticas e modelos de custo diferentes. Portanto, as regras precisam ser adaptadas antes de aplicação em outro produto.
+
+A validade de construção depende das métricas escolhidas. \codigo{pg\_stat\_statements} agrega consultas e não preserva cada execução individual. O custo do plano não representa tempo, e a comparação entre linhas estimadas e média histórica é uma aproximação. A interface explicita essas distinções para evitar que um único número seja interpretado como diagnóstico definitivo.
+
+Por fim, a equivalência de uma reescrita não pode ser generalizada a partir de um valor. A validação da Q09 foi apoiada pela regra de geração que mantinha e-mails em minúsculas, mas uma aplicação real exigiria restrição no banco, testes com valores variados e análise de collation. Essas limitações não anulam o resultado experimental; delimitam as condições em que ele é válido.
+
+\section{CONCLUSÃO}
+
+Este trabalho investigou como estatísticas históricas e planos estimados podem ser combinados para identificar consultas SQL que merecem atenção e apoiar a avaliação de melhorias. O protótipo integrou geração de dados, execução de carga, coleta pelo \codigo{pg\_stat\_statements}, análise heurística de planos, comparação preventiva e interface web local.
+
+Os resultados mostraram que critérios distintos selecionam problemas distintos: Q05 concentrou o maior tempo total, Q12 apresentou a maior média e Q01 foi a mais frequente. Na Q05, a reescrita do filtro temporal aproximou a cardinalidade estimada do histórico, mas não autorizou concluir ganho de desempenho. Na Q09, a análise apontou uma função que impedia o uso direto do índice; após verificação de equivalência, a alternativa reduziu o tempo médio do servidor em 99,88\perc nas condições avaliadas.
+
+Conclui-se que o processo responde à questão de pesquisa ao reunir histórico, plano e regras explicáveis, mantendo a validação como etapa obrigatória. A principal contribuição não é automatizar alterações no banco, mas transformar sinais técnicos em hipóteses rastreáveis e demonstrar quando uma hipótese foi ou não confirmada.
+
+Como trabalhos futuros, recomenda-se repetir as medições com múltiplos parâmetros e rodadas, incluir intervalos de confiança, incorporar um analisador sintático SQL, avaliar índices de expressão e parciais em ambiente isolado e adaptar o protótipo a outros SGBDs. Também se sugere avaliar a ferramenta com desenvolvedores e administradores para medir a clareza das explicações e a utilidade das recomendações.
+
+\appendix
+\section{REGRAS DO ANALISADOR}
+
+\begin{longtable}{p{4.0cm} p{1.5cm} p{8.0cm}}
+\caption{Regras heurísticas implementadas}\label{tab:regras}\\
+\toprule
+\textbf{Sinal} & \textbf{Pontos} & \textbf{Interpretação e verificação necessária}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Sinal} & \textbf{Pontos} & \textbf{Interpretação e verificação necessária}\\
+\midrule
+\endhead
+\codigo{SELECT *} & 1 & Pode transferir colunas desnecessárias; deve-se confirmar o contrato do consumidor.\\
+Varredura sequencial filtrada em relação com 50 mil linhas ou mais & 3 & Pode indicar baixa seletividade ou ausência de acesso adequado; o índice só deve ser proposto após medir custo de leitura e escrita.\\
+Função em coluna filtrada & 2 & Pode impedir índice comum; deve-se avaliar reescrita, normalização ou índice de expressão.\\
+Ordenação de 10 mil linhas ou mais & 2 & Pode consumir memória e armazenamento temporário; devem-se observar limite e necessidade da ordem.\\
+Laço aninhado com produto estimado de um milhão & 2 & Pode repetir trabalho em grande escala; cardinalidades e alternativas de junção devem ser conferidas.\\
+Saída estimada de 100 mil linhas ou mais & 3 & A própria resposta pode dominar o custo; paginação ou agregação podem ser requisitos do consumidor.\\
+Divergência de cardinalidade de dez vezes ou mais & 3 & Estatísticas ou expressão podem distorcer a escolha do plano; a comparação histórica é aproximada.\\
+Subplano & 2 & Pode sinalizar repetição; correlação e semântica precisam ser examinadas.\\
+\bottomrule
+\end{longtable}
+
+\section{REPRODUÇÃO DO EXPERIMENTO}
+
+A reprodução requer PostgreSQL com \codigo{pg\_stat\_statements}, Python e as dependências do projeto. Depois da configuração do arquivo de ambiente, executam-se os scripts de criação, geração, carga e coleta. A análise preventiva pode ser realizada pela linha de comando ou pela interface local. Os comandos abaixo registram a sequência conceitual; credenciais não devem ser incluídas no documento ou no repositório.
+
+\begin{lstlisting}[language=bash,caption={Sequência de reprodução pela linha de comando}]
+python -m scripts.populate_database
+python -m scripts.generate_workload
+python -m src.collector --top 12
+python -m src.analyzer --sql-file sql/candidate_query.sql
+python -m src.webapp --open
+\end{lstlisting}
+
+A análise de uma consulta candidata solicita somente o plano estimado. Um experimento de desempenho deve ocorrer separadamente, com cópia da base ou janela controlada, parâmetros documentados, repetição e verificação do resultado. Essa separação evita que a demonstração da interface seja confundida com a aplicação automática de uma alteração.
+
+\bibliographystyle{abntex2-alf}
+\renewcommand{\refname}{REFERÊNCIAS}
+\bibliography{referencias}
+
+\end{document}

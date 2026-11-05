@@ -1,0 +1,48 @@
+TCC CONSOLIDADO — 19/10/2026
+
+COMO USAR NO OVERLEAF
+Importe TCC_consolidado_overleaf.zip como um novo projeto.
+O documento principal é main.tex. Compile com XeLaTeX.
+O pacote contém o texto integral, a classe e as 11 referências citadas.
+Não é necessário instalar pacotes no computador ou montar trechos separados.
+O arquivo TCC_texto_completo.txt é uma cópia do main.tex para copiar como texto.
+
+VERIFICAÇÃO REALIZADA
+PDF compilado com Tectonic (motor XeTeX): 19 páginas A4.
+Páginas 1–18: identificação, resumos e corpo até a conclusão.
+Página 19: referências. Não há apêndices.
+Sem referências cruzadas ou citações indefinidas e sem caixas excedendo a largura.
+As páginas renderizadas foram inspecionadas visualmente.
+A paginação pode variar em outro motor; use XeLaTeX e confira após importar.
+
+ALTERAÇÕES
+Completadas as sete entradas bibliográficas ausentes; 11 fontes citadas no total.
+Corrigida a descrição da Q12: maior média registrada, baseada em uma chamada.
+Corrigida a descrição de WITH: instruções iniciadas por WITH.
+Retirado o histórico pessoal de reinstalação; mantida a separação entre rodadas.
+Explicitada a indisponibilidade dos CSV/JSON originais no material conferido.
+Explicada a associação entre plano e histórico por identificador, banco e usuário.
+Ampliada a discussão dos resultados em conexão com a literatura já citada.
+Preservados os resultados, as condições de validade e as limitações do estudo.
+Corrigida a quebra de página no exemplo dos filtros por e-mail.
+O código da aplicação e as bases de dados não foram alterados nesta revisão.
+
+FORMATAÇÃO E LIMITES
+UNESC.cls é uma classe de compatibilidade adaptada, não um arquivo certificado pelo curso.
+Configuração: A4, margens superior/esquerda de 3 cm, inferior/direita de 2 cm,
+recuo de 2 cm, corpo 12, família Times e entrelinha 1,5.
+Resumos, referências e elementos especiais usam espaçamento apropriado ao seu tipo.
+Essa escolha segue a referência geral da Biblioteca; a aceitação da classe e do
+estilo bibliográfico específico pela turma deve ser confirmada com o orientador.
+Não se declara conformidade institucional integral apenas pela compilação.
+Modelo consultado na revisão:
+https://www.unesc.net/files/editor/files/modelo%20de%20artigo%20cient%C3%ADfico_2025.docx
+
+As páginas de documentação sem data própria identificada foram registradas como
+s.d.; a versão está no título e a data de acesso está separada. Letras anexadas
+a s.d. distinguem documentos da mesma autoria institucional.
+Os anos dos artigos científicos foram preservados conforme seus metadados.
+
+A ausência dos arquivos brutos originais não foi resolvida por fabricação de dados
+nem por substituição por resultados posteriores. A limitação está declarada no texto.
+Uma nova rodada não foi realizada. Não se promete aprovação pela banca.

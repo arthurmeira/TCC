@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Observatório SQL · Logs</title>
+  <link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#logs" aria-label="Observatório SQL — Consultas SQL">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg></span>
+      <span class="brand-copy"><span class="brand-title">Observatório<span class="brand-sql">SQL</span></span><span class="brand-sub">Análise de consultas</span></span>
+    </a>
+    <nav aria-label="Navegação principal">
+      <button data-page="logs" class="nav-button active" aria-current="page"><span aria-hidden="true">▤</span>Consultas SQL</button>
+      <button data-page="analyze" class="nav-button"><span aria-hidden="true">⌕</span>Analisar consulta</button>
+      <button data-page="compare" class="nav-button"><span aria-hidden="true">⇄</span>Comparar e validar</button>
+    </nav>
+  </aside>
+  <main>
+    <div id="global-error" class="notice error" role="alert" hidden></div>
+
+    <section id="page-logs" class="page">
+      <div class="page-heading"><div><h1>Consultas observadas</h1><p>Escolha uma consulta registrada pelo PostgreSQL para ver seus tempos e investigar melhorias.</p></div></div>
+      <div class="panel log-actions"><button id="sync-queries" class="button primary">↻ Atualizar consultas</button><button id="capture-logs" class="button secondary">Coletar exemplos reais</button></div>
+      <p class="footnote capture-note" id="sync-context">Banco: tcc_sql_optimizer_logs · Atualizar consultas lê as estatísticas, sem executar as consultas observadas.</p>
+      <p id="log-status" class="notice info" role="status" hidden></p><div id="log-error" class="notice error" role="alert" hidden></div>
+      <div id="log-metrics" class="result-metrics"></div>
+      <article class="panel"><div class="result-toolbar log-list-heading"><div><h2>Consultas registradas</h2><p>Os tempos abaixo vêm do histórico do banco.</p></div><label class="sort-label" for="log-sort">Ordenar por <select id="log-sort"><option value="recent">Mais recentes</option><option value="oldest">Mais antigas</option><option value="total_ms">Tempo acumulado</option><option value="mean_ms">Tempo médio</option><option value="calls">Frequência</option></select></label></div><div id="log-list" aria-live="polite"></div></article>
+      <details class="panel"><summary>Experimentos salvos <span id="report-count"></span></summary><div id="saved-reports"></div></details>
+    </section>
+
+<section id="page-analyze" class="page" hidden>
+      <div class="page-heading"><div><h1>Analisar consulta</h1><p>Cole um SELECT ou escolha um exemplo para examinar seu plano e possíveis melhorias. A consulta não é executada.</p></div></div>
+      <form id="analyze-form" class="panel editor-panel">
+        <div class="editor-toolbar"><label for="query-select">Escolha um exemplo</label><select id="query-select"><option>Carregando exemplos…</option></select></div>
+        <p id="query-description" class="query-description"></p>
+        <label for="sql-input" class="editor-label">CONSULTA SQL <span>Você pode editar o exemplo ou colar um SELECT.</span></label>
+        <textarea id="sql-input" class="sql-editor" spellcheck="false" aria-describedby="sql-help" placeholder="SELECT ..." required></textarea>
+        <div class="editor-footer"><p id="sql-help">Uma instrução SELECT por vez. Sem INSERT, UPDATE ou DELETE.</p><button id="analyze-button" class="button primary" type="submit">Analisar e propor melhorias <span aria-hidden="true">→</span></button></div>
+      </form>
+      <div id="analysis-error" class="notice error" role="alert" hidden></div>
+      <div id="analysis-result" aria-live="polite"></div>
+    </section>
+
+    <section id="page-compare" class="page" hidden>
+      <div class="page-heading"><div><h1>Comparar e validar</h1><p>Compare os planos estimados e meça as duas versões no banco de teste.</p></div></div>
+      <form id="compare-form">
+        <div class="comparison-picker"><label for="comparison-select">Caso de demonstração</label><select id="comparison-select"><option>Carregando casos…</option></select></div>
+        <p id="comparison-description" class="lead small"></p>
+        <div class="comparison-editors"><div class="panel"><label class="editor-label" for="original-sql">01 / ORIGINAL</label><textarea id="original-sql" class="sql-editor" spellcheck="false" required></textarea></div><div class="panel alternative"><label class="editor-label" for="alternative-sql">02 / ALTERNATIVA</label><textarea id="alternative-sql" class="sql-editor" spellcheck="false" required></textarea></div></div>
+        <div class="notice info"><strong>Confira a equivalência.</strong> <span id="comparison-condition"></span> Se editar o SQL, verifique novamente essa condição.</div>
+        <div class="action-row"><p class="muted">O plano mostra estimativas. A medição verifica resultados e tempo real.</p><button id="compare-button" class="button secondary" type="submit">Comparar planos <span aria-hidden="true">⇄</span></button></div>
+      </form>
+      <div id="comparison-error" class="notice error" role="alert" hidden></div><div id="comparison-result" aria-live="polite"></div>
+      <div class="panel validation-controls"><div><h2>Validar com execuções reais</h2><p class="muted">Executa as duas versões no banco de teste e compara os resultados e os tempos.</p></div><label for="benchmark-calls">Repetições por versão <select id="benchmark-calls"><option value="3">3</option><option value="10" selected>10</option><option value="30">30</option><option value="50">50</option></select></label><button id="run-benchmark" class="button primary" type="button">Executar e medir</button></div>
+      <div id="benchmark-status" class="notice info" role="status" hidden></div><div id="benchmark-error" class="notice error" role="alert" hidden></div><div id="benchmark-result" aria-live="polite"></div>
+    </section>
+
+  </main>
+  <dialog id="investigation-dialog" aria-labelledby="investigation-title">
+    <div class="investigation-header"><h2 id="investigation-title">Investigar consulta</h2><button id="close-investigation" type="button" aria-label="Fechar investigação" autofocus>×</button></div>
+    <div id="investigation-body" class="investigation-body"><div id="log-investigation" aria-live="polite"></div></div>
+  </dialog>
+</body></html>

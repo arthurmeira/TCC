@@ -1,4 +1,4 @@
--- ETAPA 4: executar manualmente no DBeaver, em tcc_sql_optimizer.
+-- ETAPA 4: executar manualmente no DBeaver, em tcc_sql_optimizer_logs.
 -- Pré-requisito: configurar shared_preload_libraries e reiniciar o serviço.
 -- Este arquivo não altera postgresql.conf nem reinicia o PostgreSQL.
 -- A instalação cria os objetos da extensão no banco; não altera os dados comerciais.
@@ -8,8 +8,8 @@ BEGIN;
 
 DO $$
 BEGIN
-    IF current_database() <> 'tcc_sql_optimizer' THEN
-        RAISE EXCEPTION 'Banco incorreto: %. Conecte a tcc_sql_optimizer.', current_database();
+    IF current_database() <> 'tcc_sql_optimizer_logs' THEN
+        RAISE EXCEPTION 'Banco incorreto: %. Conecte a tcc_sql_optimizer_logs.', current_database();
     END IF;
 
     IF NOT (
@@ -64,6 +64,6 @@ ORDER BY calls DESC;
 -- Não execute novamente este arquivo de instalação entre o reset e o workload.
 /*
 SELECT public.pg_stat_statements_reset(
-    dbid => (SELECT oid FROM pg_database WHERE datname = 'tcc_sql_optimizer')
+    dbid => (SELECT oid FROM pg_database WHERE datname = 'tcc_sql_optimizer_logs')
 );
 */

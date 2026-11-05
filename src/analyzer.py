@@ -53,7 +53,11 @@ def load_select(path: Path) -> str:
     if not path.is_file():
         raise ValueError(f"Arquivo SQL não encontrado: {path}")
 
-    query = path.read_text(encoding="utf-8-sig")
+    return validate_select(path.read_text(encoding="utf-8-sig"))
+
+
+def validate_select(query: str) -> str:
+    """Valida o SQL recebido pelo terminal ou pela interface local."""
     normalized, semicolons = _normalize_sql(query)
     if not normalized.strip():
         raise ValueError("O arquivo SQL está vazio.")
@@ -69,12 +73,24 @@ def load_select(path: Path) -> str:
     else:
         query = query.strip()
 
-    if not re.match(r"^\s*SELECT\b", normalized, re.IGNORECASE):
-        raise ValueError(
-            "Nesta versão, o analisador aceita somente uma consulta iniciada por SELECT."
-        )
-    if re.search(r"\bINTO\b", normalized, re.IGNORECASE):
-        raise ValueError("SELECT INTO não é aceito pelo analisador preventivo.")
+    # A árvore distingue CTEs de leitura de CTEs que alteram registros.
+    from pglast import ast, parse_sql
+    from pglast.parser import ParseError
+    from pglast.visitors import Visitor
+    try:
+        tree = parse_sql(query)
+    except ParseError as exc:
+        raise ValueError("O SQL está incompleto ou contém um erro de sintaxe.") from exc
+    if len(tree) != 1 or not isinstance(tree[0].stmt, ast.SelectStmt):
+        raise ValueError("Informe uma consulta SELECT, inclusive WITH somente de leitura.")
+    class ReadOnly(Visitor):
+        def visit_SelectStmt(self, ancestors, node):
+            if node.intoClause:
+                raise ValueError("SELECT INTO não é aceito pelo analisador.")
+        def visit(self, ancestors, node):
+            if isinstance(node, (ast.InsertStmt, ast.UpdateStmt, ast.DeleteStmt, ast.MergeStmt)):
+                raise ValueError("CTEs com alterações não são aceitas pelo analisador.")
+    ReadOnly()(tree)
 
     return query
 
@@ -173,6 +189,7 @@ def explain_query(
     connection: psycopg.Connection,
     query: str,
     timeout_seconds: int,
+    generic: bool = False,
 ) -> dict[str, Any]:
     """Solicita somente o plano estimado em JSON."""
     with connection.cursor() as cursor:
@@ -183,12 +200,13 @@ def explain_query(
         cursor.execute("SELECT set_config('lock_timeout', '5s', true)")
         cursor.execute("SELECT current_database()")
         database_name = cursor.fetchone()[0]
-        if database_name != "tcc_sql_optimizer":
+        if database_name != "tcc_sql_optimizer_logs":
             raise ValueError(
-                "O analisador deve ser usado somente no banco tcc_sql_optimizer."
+                "O analisador deve ser usado somente no banco tcc_sql_optimizer_logs."
             )
 
-        cursor.execute(EXPLAIN_PREFIX + query)
+        prefix = EXPLAIN_PREFIX.replace("EXPLAIN (", "EXPLAIN (GENERIC_PLAN TRUE, ") if generic else EXPLAIN_PREFIX
+        cursor.execute(prefix + query)
         payload = cursor.fetchone()[0]
 
     if isinstance(payload, str):

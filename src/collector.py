@@ -119,19 +119,30 @@ def collect_metrics(all_selects: bool = False) -> tuple[list[dict], dict]:
     with get_connection() as connection:
         connection.read_only = True
         with connection.cursor(row_factory=dict_row) as cursor:
+            cursor.execute("SET LOCAL statement_timeout = '10s'")
             cursor.execute(
                 """
                 SELECT current_database() AS database_name,
                        current_user AS user_name,
                        current_setting('server_version') AS server_version,
-                       current_setting('pg_stat_statements.track', true) AS track
+                       current_setting('pg_stat_statements.track', true) AS track,
+                       pg_postmaster_start_time() AS server_started_at
                 """
             )
             metadata = cursor.fetchone()
-            if metadata["database_name"] != "tcc_sql_optimizer":
-                raise ValueError("O coletor deve usar o banco tcc_sql_optimizer.")
+            if metadata["database_name"] != "tcc_sql_optimizer_logs":
+                raise ValueError("O coletor deve usar o banco tcc_sql_optimizer_logs.")
             extension, columns = inspect_extension(cursor)
             metadata.update(extension)
+            cursor.execute(
+                sql.SQL("SELECT stats_reset FROM {}").format(
+                    sql.Identifier(extension["extension_schema"], "pg_stat_statements_info")
+                )
+            )
+            metadata["stats_reset"] = cursor.fetchone()["stats_reset"]
+            for field in ("stats_reset", "server_started_at"):
+                if metadata[field] is not None:
+                    metadata[field] = metadata[field].isoformat(timespec="seconds")
             if metadata["track"] not in ("top", "all"):
                 raise ValueError("O rastreamento pg_stat_statements não está ativo nesta sessão.")
 

@@ -1,4 +1,4 @@
--- Executar manualmente no DBeaver, conectado a tcc_sql_optimizer,
+-- Executar manualmente no DBeaver, conectado a tcc_sql_optimizer_logs,
 -- somente após a confirmação do COMMIT do gerador.
 -- Todas as instruções deste arquivo são consultas de leitura.
 

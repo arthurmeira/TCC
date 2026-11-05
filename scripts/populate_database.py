@@ -188,8 +188,8 @@ def make_order_batch(
 
 def require_empty_tables(cursor: psycopg.Cursor) -> None:
     cursor.execute("SELECT current_database()")
-    if cursor.fetchone()[0] != "tcc_sql_optimizer":
-        raise ValueError("A conexão deve apontar para tcc_sql_optimizer.")
+    if cursor.fetchone()[0] != "tcc_sql_optimizer_logs":
+        raise ValueError("A conexão deve apontar para tcc_sql_optimizer_logs.")
 
     # Impede cargas simultâneas e outras escritas enquanto a transação estiver aberta.
     tables = sql.SQL(", ").join(sql.Identifier("public", table) for table in COLUMNS)

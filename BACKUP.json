@@ -1,0 +1,19 @@
+{
+  "source": "C:\\Users\\Arthur Meira\\Desktop\\TCC",
+  "backup": "C:\\Users\\Arthur Meira\\Desktop\\TCC-Backup-20261031-154304.zip",
+  "new_project": "C:\\Users\\Arthur Meira\\Desktop\\TCC-Logs",
+  "files": 117,
+  "includes": [
+    "código SQL/Python e interface",
+    "configuração .env",
+    "documentação",
+    "resultados",
+    "output"
+  ],
+  "excluded": [
+    ".git (histórico Git; original preservado)",
+    ".venv (será recriado)",
+    ".pnpm-store e projetos de vídeo não relacionados",
+    "tmp (arquivos temporários)"
+  ]
+}

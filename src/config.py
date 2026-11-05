@@ -52,9 +52,9 @@ def get_database_config() -> dict:
 
     database_name = os.environ["DB_NAME"].strip()
 
-    if database_name != "tcc_sql_optimizer":
+    if database_name != "tcc_sql_optimizer_logs":
         raise ValueError(
-            "Este protótipo deve utilizar o banco tcc_sql_optimizer."
+            "Este protótipo deve utilizar o banco tcc_sql_optimizer_logs."
         )
 
     return {
@@ -64,5 +64,5 @@ def get_database_config() -> dict:
         "user": os.environ["DB_USER"].strip(),
         "password": os.environ["DB_PASSWORD"],
         "connect_timeout": connect_timeout,
-        "application_name": "tcc_sql_optimizer",
+        "application_name": "tcc_sql_optimizer_logs",
     }

@@ -2,9 +2,9 @@ BEGIN;
 
 DO $$
 BEGIN
-    IF current_database() <> 'tcc_sql_optimizer' THEN
+    IF current_database() <> 'tcc_sql_optimizer_logs' THEN
         RAISE EXCEPTION
-            'Execute este script no banco tcc_sql_optimizer. Banco atual: %',
+            'Execute este script no banco tcc_sql_optimizer_logs. Banco atual: %',
             current_database();
     END IF;
 END;

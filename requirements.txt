@@ -1,2 +1,7 @@
 psycopg[binary]>=3.2,<4.0
 python-dotenv>=1.0,<2.0
+
+pglast==8.7
+
+# Parser das propostas na tela Analisar consulta.
+sqlglot==30.29.0

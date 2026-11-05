@@ -123,8 +123,8 @@ def prepare_session(connection: psycopg.Connection, timeout_seconds: int) -> Non
         )
         cursor.execute("SELECT current_database(), current_setting('transaction_read_only')")
         database_name, read_only = cursor.fetchone()
-        if database_name != "tcc_sql_optimizer" or read_only != "on":
-            raise ValueError("A sessão deve usar tcc_sql_optimizer em modo somente leitura.")
+        if database_name != "tcc_sql_optimizer_logs" or read_only != "on":
+            raise ValueError("A sessão deve usar tcc_sql_optimizer_logs em modo somente leitura.")
 
         for table in TABLES:
             cursor.execute(
