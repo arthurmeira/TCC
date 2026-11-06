@@ -23,6 +23,7 @@ from src.analyzer import (
 from src.collector import collect_metrics
 from src.config import PROJECT_ROOT
 from src.database import get_connection
+from src.demo_queries import DEMO_QUERIES
 from src.plan_analyzer import analyze_plan
 from src.recommendations import recommend
 from src.execution_logs import import_logs, list_queries, get_query, reports
@@ -52,7 +53,7 @@ DESCRIPTIONS = {
 def presets() -> dict:
     queries = load_queries(QUERY_FILE)
     return {
-        "queries": [dict(id=q.name, title=q.title, sql=q.statement,
+        "queries": DEMO_QUERIES + [dict(id=q.name, title=q.title, sql=q.statement,
                          description=DESCRIPTIONS[q.name]) for q in queries],
         "comparisons": [
             dict(id="email", title="Busca por e-mail", original_id="Q09",
@@ -80,6 +81,16 @@ def analyze_query(query: str, *, generic=None, history_override=None) -> dict:
         improvements = recommend(connection, query, document)
         query_id = document.get("Query Identifier")
         history = history_override if history_override is not None else fetch_history(connection, int(query_id)) if query_id is not None else None
+    # Expõe também as regras já usadas pela investigação de consultas.
+    if not generic and not any(p['kind'] == 'rewrite' for p in improvements['proposals']):
+        for candidate in propose(query):
+            improvements['proposals'].append(dict(
+                kind='rewrite', title=candidate['title'], sql=candidate['alternative'],
+                explanation=candidate['evidence'], evidence=candidate['origin'],
+                conditions=candidate['condition'], status='Proposta para teste; ganho ainda não medido.'))
+        if any(p['kind'] == 'rewrite' for p in improvements['proposals']):
+            improvements['rewrite_status'] = 'available'
+            improvements['notes'] = []
     assessment = analyze_plan(query, document, metadata, None if generic else history)
     plan = document["Plan"]
     # Identificadores bigint precisam ser texto no JavaScript para não perder dígitos.

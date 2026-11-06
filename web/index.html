@@ -47,8 +47,7 @@
     <section id="page-compare" class="page" hidden>
       <div class="page-heading"><div><h1>Comparar e validar</h1><p>Compare os planos estimados e meça as duas versões no banco de teste.</p></div></div>
       <form id="compare-form">
-        <div class="comparison-picker"><label for="comparison-select">Caso de demonstração</label><select id="comparison-select"><option>Carregando casos…</option></select></div>
-        <p id="comparison-description" class="lead small"></p>
+        <p id="comparison-description" class="lead small">Envie uma proposta pela análise ou cole a consulta original e a alternativa abaixo.</p>
         <div class="comparison-editors"><div class="panel"><label class="editor-label" for="original-sql">01 / ORIGINAL</label><textarea id="original-sql" class="sql-editor" spellcheck="false" required></textarea></div><div class="panel alternative"><label class="editor-label" for="alternative-sql">02 / ALTERNATIVA</label><textarea id="alternative-sql" class="sql-editor" spellcheck="false" required></textarea></div></div>
         <div class="notice info"><strong>Confira a equivalência.</strong> <span id="comparison-condition"></span> Se editar o SQL, verifique novamente essa condição.</div>
         <div class="action-row"><p class="muted">O plano mostra estimativas. A medição verifica resultados e tempo real.</p><button id="compare-button" class="button secondary" type="submit">Comparar planos <span aria-hidden="true">⇄</span></button></div>

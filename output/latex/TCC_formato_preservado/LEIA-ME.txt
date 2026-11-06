@@ -1,8 +1,0 @@
-Esta versão substitui o pacote TCC_consolidado anterior.
-Título original restaurado: ANÁLISE E OTIMIZAÇÃO DE CONSULTAS SQL COM BASE EM LOGS DE EXECUÇÃO EM BANCOS DE DADOS RELACIONAIS.
-Preâmbulo, fonte phv, tamanhos, estilo das listagens e estrutura das tabelas restaurados a partir do texto enviado pelo autor.
-Classe de diagramação recuperada da cópia anterior do projeto original, preservando suas correções de sintaxe. Não foi mantida a nova classe A4/Times do pacote anterior.
-Correções textuais e referências foram mantidas. Nas tabelas, somente a descrição tecnicamente incorreta do ranking Q12 foi corrigida.
-Use main.tex como arquivo principal. O projeto foi compilado com Tectonic/XeTeX; no Overleaf, use XeLaTeX.
-Esta compilação tem 23 páginas. A conclusão termina na página 22, onde começam as referências. Portanto, o limite de 20 páginas de conteúdo ainda não está atendido. Não foram reduzidos fonte, margens ou tabelas para forçar a paginação.
-O título foi preservado por determinação do autor; o corpo continua distinguindo estatísticas acumuladas de logs individuais.

@@ -8,6 +8,8 @@ import statistics
 import threading
 import uuid
 import psycopg
+from pglast import ast
+from pglast.stream import RawStream
 from datetime import datetime, timezone
 from time import perf_counter
 
@@ -19,9 +21,37 @@ RUN_LOCK = threading.Lock()
 MAX_ROWS = 3_000_000
 
 
+def ordering_columns(query):
+    """Resolve ORDER BY nas colunas projetadas; casos ambíguos ficam estritos."""
+    statement = parse_select(query)
+    targets = statement.targetList or ()
+    if any(isinstance(t.val, ast.ColumnRef) and
+           any(isinstance(f, ast.A_Star) for f in t.val.fields) for t in targets):
+        return None
+    indexes = []
+    for sort in statement.sortClause or ():
+        node = sort.node
+        if isinstance(node, ast.A_Const) and isinstance(node.val, ast.Integer):
+            matches = [node.val.ival - 1] if 1 <= node.val.ival <= len(targets) else []
+        else:
+            matches = []
+            if isinstance(node, ast.ColumnRef) and len(node.fields) == 1 and isinstance(node.fields[0], ast.String):
+                matches = [i for i, t in enumerate(targets) if t.name == node.fields[0].sval]
+            if not matches:
+                matches = [i for i, t in enumerate(targets) if RawStream()(t.val) == RawStream()(node)]
+        if len(matches) != 1:
+            return None
+        indexes.append(matches[0])
+    return indexes or None
+
+
 def result_signature(connection, query, ordered):
     count, digest = 0, 0
     sequence = hashlib.sha256()
+    indexes = ordering_columns(query) if ordered else None
+    group_key, group_count, group_digest = None, 0, 0
+    def finish_group():
+        sequence.update(f"{group_count}:{group_digest:064x};".encode())
     with connection.cursor() as cursor:
         for row in cursor.stream(query, size=2000):
             count += 1
@@ -30,8 +60,19 @@ def result_signature(connection, query, ordered):
             encoded = json.dumps(row,default=str,ensure_ascii=False,separators=(",", ":")).encode()
             hashed = hashlib.sha256(encoded).digest()
             digest = (digest + int.from_bytes(hashed, "big")) % (1 << 256)
-            sequence.update(hashed)
+            if indexes is not None:
+                key = tuple(row[i] for i in indexes)
+                if group_count and key != group_key:
+                    finish_group()
+                    group_count, group_digest = 0, 0
+                group_key = key
+                group_count += 1
+                group_digest = (group_digest + int.from_bytes(hashed, 'big')) % (1 << 256)
+            else:
+                sequence.update(hashed)
         columns = [(col.name, col.type_code) for col in cursor.description or ()]
+    if group_count:
+        finish_group()
     return dict(rows=count,columns=columns,signature=sequence.hexdigest() if ordered else f"{digest:064x}")
 
 
@@ -82,7 +123,7 @@ def benchmark(original, alternative, calls=10, query_id=None):
         verdict = "Tempo menor nesta rodada" if reduction is not None and reduction > 0 else "Tempo maior nesta rodada" if reduction is not None and reduction < 0 else "Sem redução nesta rodada"
         report = dict(id=uuid.uuid4().hex,created_at=datetime.now(timezone.utc).isoformat(),query_id=query_id,
                       original_sql=original,alternative_sql=alternative,metrics=summary,reduction_pct=reduction,verdict=verdict,
-                      equivalent=True,result_check="SHA-256 por linha, contagem e colunas; multiconjunto para consultas sem ORDER BY, sequência quando há ORDER BY. Mesma fotografia transacional dos dados.",
+                      equivalent=True,result_check="SHA-256 por linha, contagem e colunas; multiconjunto sem ORDER BY. Com ORDER BY projetado, sequência de grupos empatados, preservando duplicatas dentro de cada grupo; outros casos usam sequência estrita. Mesma fotografia transacional dos dados.",
                       signatures=signatures,method="EXPLAIN ANALYZE, BUFFERS, TIMING FALSE; 1 aquecimento por versão e repetições intercaladas, semente 2026. Tempos do servidor, incluindo instrumentação do EXPLAIN. Comparação descritiva da rodada, sem teste de significância.",
                       elapsed_seconds=perf_counter()-started)
         save_experiment(report)

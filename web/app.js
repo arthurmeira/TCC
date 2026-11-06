@@ -38,26 +38,6 @@ function selectExample(id) {
   $("query-description").textContent = example.description;
   invalidateAnalysis();
 }
-function selectComparison(id) {
-  if (id === "") {
-    $("original-sql").value = "";
-    $("alternative-sql").value = "";
-    $("comparison-description").textContent = "Cole a consulta original e a versão alternativa.";
-    $("comparison-condition").textContent = "Use os mesmos parâmetros nas duas consultas e confira se os resultados são equivalentes.";
-    invalidateComparison();
-    state.queryId = null;
-    $("original-sql").focus();
-    return;
-  }
-  const example = state.presets?.comparisons.find(item => item.id === id);
-  if (!example) return;
-  $("comparison-select").value = id;
-  $("original-sql").value = example.original;
-  $("alternative-sql").value = example.alternative;
-  $("comparison-description").textContent = example.explanation;
-  $("comparison-condition").textContent = example.condition;
-  invalidateComparison(); state.queryId=null;
-}
 function invalidateAnalysis() { state.analysis = null; $("analysis-result").replaceChildren(); message("analysis-error",""); }
 function invalidateComparison() { state.comparison = null; state.report=null; $("benchmark-result").replaceChildren(); message("benchmark-error",""); $("comparison-result").replaceChildren(); message("comparison-error",""); }
 function download(name, data) {
@@ -106,7 +86,6 @@ function bindImprovements(result) {
   }));
   document.querySelectorAll('[data-compare-proposal]').forEach(button => button.addEventListener('click', () => {
     const proposal = result.improvements.proposals[Number(button.dataset.compareProposal)];
-    $("comparison-select").value = '';
     state.queryId = null;
     $("original-sql").value = result.sql;
     $("alternative-sql").value = proposal.sql;
@@ -140,7 +119,6 @@ $("query-select").addEventListener("change",event => {
 $("sql-input").addEventListener("input",() => {
   $("query-select").value="custom"; $("query-description").textContent="Consulta editada por você. A análise usará exatamente o SQL abaixo."; invalidateAnalysis();
 });
-$("comparison-select").addEventListener("change",event => selectComparison(event.target.value));
 for (const id of ["original-sql","alternative-sql"]) $(id).addEventListener("input",()=>{ invalidateComparison(); if(id==="original-sql")state.queryId=null; $("comparison-condition").textContent="Consultas editadas. Verifique se retornam os mesmos dados antes de adotar a alteração."; });
 $("analyze-form").addEventListener("submit",async event => {
   event.preventDefault(); const sql = $("sql-input").value;
@@ -164,9 +142,10 @@ async function start() {
   showPage(location.hash.slice(1),false);
   try {
     state.presets = await api("/api/presets");
-    $("query-select").innerHTML=state.presets.queries.map(q => `<option value="${esc(q.id)}">${esc(q.id)} · ${esc(q.title)}</option>`).join("")+'<option value="custom">Minha própria consulta</option>';
-    $("comparison-select").innerHTML='<option value="">Consulta dos logs / personalizada</option>'+state.presets.comparisons.map(q => `<option value="${esc(q.id)}">${esc(q.title)}</option>`).join("");
-    selectExample("Q05"); selectComparison("email");
+    const exampleOption=q=>`<option value="${esc(q.id)}">${esc(q.id)} · ${esc(q.title)}</option>`;
+    $("query-select").innerHTML='<optgroup label="5 testes de otimização">'+state.presets.queries.filter(q=>q.id.startsWith('D')).map(exampleOption).join('')+'</optgroup><optgroup label="Outros exemplos">'+state.presets.queries.filter(q=>!q.id.startsWith('D')).map(exampleOption).join('')+'</optgroup><option value="custom">Minha própria consulta</option>';
+    selectExample("D01");
+    $("comparison-condition").textContent="Confira se as duas consultas retornam os mesmos dados.";
   } catch(error) { message("global-error",error.message); }
   await loadLogs();
 }
@@ -408,7 +387,7 @@ function useProposal(index){
   const r=index===null?{original:item.materialized_sql||item.record.sql,alternative:item.materialized_sql||item.record.sql,condition:"Edite a alternativa e verifique se preserva os resultados.",evidence:"Consulta selecionada dos logs."}:item.recommendations[index];
   invalidateComparison();state.queryId=item.record.id;
   $("original-sql").value=r.original;$("alternative-sql").value=r.alternative;
-  $("comparison-select").value="";$("comparison-description").textContent=r.evidence;$("comparison-condition").textContent=r.requires_parameters ? "Para medir, substitua os parâmetros pelos mesmos valores nos dois SQLs." : r.condition;
+  $("comparison-description").textContent=r.evidence;$("comparison-condition").textContent=r.requires_parameters ? "Para medir, substitua os parâmetros pelos mesmos valores nos dois SQLs." : r.condition;
   showPage("compare");
 }
 function renderBenchmark(report){
@@ -432,7 +411,7 @@ document.addEventListener("click",event=>{
   const investigation=event.target.closest("[data-investigate]");if(investigation)investigate(investigation.dataset.investigate,investigation);
   const proposal=event.target.closest("[data-use-proposal]");if(proposal)useProposal(Number(proposal.dataset.useProposal));
   if(event.target.closest("#manual-proposal"))useProposal(null);
-  const saved=event.target.closest("[data-report]");if(saved){const report=state.reports[Number(saved.dataset.report)];invalidateComparison();$("original-sql").value=report.original_sql;$("alternative-sql").value=report.alternative_sql;state.queryId=report.query_id;$("comparison-select").value="";$("comparison-description").textContent="Experimento salvo; resultado da rodada indicada abaixo.";$("comparison-condition").textContent="As assinaturas foram comparadas no momento do teste.";renderBenchmark(report);showPage("compare");$("benchmark-result").scrollIntoView({behavior:"smooth"});}
+  const saved=event.target.closest("[data-report]");if(saved){const report=state.reports[Number(saved.dataset.report)];invalidateComparison();$("original-sql").value=report.original_sql;$("alternative-sql").value=report.alternative_sql;state.queryId=report.query_id;$("comparison-description").textContent="Experimento salvo; resultado da rodada indicada abaixo.";$("comparison-condition").textContent="As assinaturas foram comparadas no momento do teste.";renderBenchmark(report);showPage("compare");$("benchmark-result").scrollIntoView({behavior:"smooth"});}
 });
 document.addEventListener("click",async event=>{
   const measure=event.target.closest("[data-measure-proposal]");if(measure)measureProposal(Number(measure.dataset.measureProposal),measure);
