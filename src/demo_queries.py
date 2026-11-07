@@ -30,3 +30,30 @@ WHERE EXTRACT(YEAR FROM data_pedido) = 2025
 GROUP BY DATE_TRUNC('month', data_pedido)
 ORDER BY mes;"""),
 ]
+
+# Consultas adicionais com estruturas diferentes, reconhecidas pelas regras
+# existentes. O desempenho e a equivalência são verificados em cada medição.
+DEMO_QUERIES += [
+    dict(title="Pedidos anuais com clientes", description="Junção de pedidos e clientes com extração do ano.", sql="""SELECT p.id, p.data_pedido, p.valor_total, c.nome
+FROM public.pedidos p JOIN public.clientes c ON c.id = p.cliente_id
+WHERE EXTRACT(YEAR FROM p.data_pedido) = 2025;"""),
+    dict(title="Total anual de pedidos", description="Contagem de pedidos com filtro anual.", sql="""SELECT COUNT(*) AS quantidade_pedidos
+FROM public.pedidos WHERE EXTRACT(YEAR FROM data_pedido) = 2025;"""),
+    dict(title="Valor anual de pedidos", description="Soma dos valores dos pedidos de um ano.", sql="""SELECT SUM(valor_total) AS total_vendas
+FROM public.pedidos WHERE EXTRACT(YEAR FROM data_pedido) = 2025;"""),
+    dict(title="Pedidos anuais por situação", description="Agrupamento por situação com filtro anual.", sql="""SELECT status, COUNT(*) AS quantidade_pedidos
+FROM public.pedidos WHERE EXTRACT(YEAR FROM data_pedido) = 2025
+GROUP BY status ORDER BY status;"""),
+    dict(title="Pedidos anuais por cliente", description="Contagem por cliente com filtro anual.", sql="""SELECT cliente_id, COUNT(*) AS quantidade_pedidos
+FROM public.pedidos WHERE EXTRACT(YEAR FROM data_pedido) = 2025
+GROUP BY cliente_id ORDER BY cliente_id;"""),
+    dict(title="Pedidos anuais de maior valor", description="Ordenação dos pedidos de um ano pelo valor.", sql="""SELECT id, data_pedido, valor_total
+FROM public.pedidos WHERE EXTRACT(YEAR FROM data_pedido) = 2025
+ORDER BY valor_total DESC, id LIMIT 100;"""),
+    dict(title="Contagem de pedidos por cliente e cidade", description="Contagem correlacionada para clientes de um intervalo.", sql="""SELECT c.id, c.nome, c.cidade,
+       (SELECT COUNT(*) FROM public.pedidos p WHERE p.cliente_id = c.id) AS quantidade_pedidos
+FROM public.clientes c WHERE c.id BETWEEN 1 AND 30 ORDER BY c.id;"""),
+]
+
+for index, query in enumerate(DEMO_QUERIES, 1):
+    query["id"] = f"C{index:02d}"

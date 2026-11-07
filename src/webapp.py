@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import socket
 import sys
+import uuid
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 import webbrowser
@@ -26,9 +27,9 @@ from src.database import get_connection
 from src.demo_queries import DEMO_QUERIES
 from src.plan_analyzer import analyze_plan
 from src.recommendations import recommend
-from src.execution_logs import import_logs, list_queries, get_query, reports
+from src.execution_logs import import_logs, list_queries, get_query, reports, save_experiment
 from src.optimization import propose, missing_proposal_note
-from src.benchmark import benchmark
+from src.benchmark import benchmark, RUN_LOCK
 from src.log_capture import capture_workload
 from src.statement_sync import (synchronize, list_statements, get_statement, query_shape, bind_parameters, performance_findings)
 
@@ -51,10 +52,8 @@ DESCRIPTIONS = {
 
 
 def presets() -> dict:
-    queries = load_queries(QUERY_FILE)
     return {
-        "queries": DEMO_QUERIES + [dict(id=q.name, title=q.title, sql=q.statement,
-                         description=DESCRIPTIONS[q.name]) for q in queries],
+        "queries": DEMO_QUERIES,
         "comparisons": [
             dict(id="email", title="Busca por e-mail", original_id="Q09",
                  original=(PROJECT_ROOT / "sql/candidate_email_lower.sql").read_text(encoding="utf-8"),
@@ -68,6 +67,30 @@ def presets() -> dict:
                  condition="As duas formas selecionam o mesmo ano neste banco. Como muitos pedidos são de 2026, uma varredura completa ainda pode ser uma escolha adequada."),
         ],
     }
+
+
+def execute_preset(preset_id):
+    """Executa apenas um exemplo cadastrado, em transação de leitura."""
+    if not isinstance(preset_id, str):
+        raise ValueError('Selecione uma consulta cadastrada.')
+    selected = next((q for q in presets()['queries'] if q['id'] == preset_id), None)
+    if selected is None:
+        raise ValueError('Consulta cadastrada não encontrada.')
+    from src.optimization import executable_select
+    query = executable_select(selected['sql'])
+    if not RUN_LOCK.acquire(blocking=False):
+        raise ValueError('Outro teste ou coleta está em andamento. Aguarde sua conclusão.')
+    try:
+        with get_connection() as connection:
+            connection.read_only = True
+            with connection.cursor() as cursor:
+                cursor.execute("SET LOCAL statement_timeout='30s'")
+                cursor.execute("SET LOCAL lock_timeout='3s'")
+                cursor.execute('SET LOCAL search_path=pg_catalog,public')
+                rows = sum(1 for _ in cursor.stream(query, size=2000))
+        return {'id': selected['id'], 'title': selected['title'], 'rows': rows}
+    finally:
+        RUN_LOCK.release()
 
 
 def analyze_query(query: str, *, generic=None, history_override=None) -> dict:
@@ -158,6 +181,16 @@ def investigate_statement(payload):
             recommendation["projection"]=project_recommendation(analysis,alternative)
         except (psycopg.Error,ValueError):
             recommendation["projection_error"]="Não foi possível estimar o plano da alternativa."
+    additional = (analysis or {}).get('improvements', {}).get('proposals', [])
+    has_rewrite = bool(recommendations) or any(p.get('kind') == 'rewrite' for p in additional)
+    if payload.get('record_outcome') is True and materialized and not has_rewrite:
+        status = 'plan_unavailable' if plan_error else 'no_proposal'
+        verdict = 'Plano indisponível' if plan_error else 'Sem alternativa automática'
+        save_experiment(dict(id=uuid.uuid4().hex, created_at=datetime.now(timezone.utc).isoformat(),
+            query_id=record['id'], original_sql=query, alternative_sql=None, status=status,
+            verdict=verdict, equivalent=None, reduction_pct=None, metrics={},
+            reason=plan_error or 'As regras disponíveis não encontraram uma reescrita automática.',
+            environment=dict(database=record.get('database_name'))))
     return dict(record=record,formatted_sql=prettify(query,comma_at_eoln=True,safety_belt=True),analysis=analysis,findings=performance_findings(record),recommendations=recommendations,
                 recommendation_note=missing_proposal_note(query,analysis) if not recommendations else None,
                 parameters=sorted(shape.parameters),materialized_sql=materialized,plan_error=plan_error,
@@ -259,7 +292,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "Abra a interface pelo endereço local."}, 403)
             return
         path = urlsplit(self.path).path
-        if path not in {"/api/analyze", "/api/compare", "/api/logs/import", "/api/logs/capture", "/api/logs/investigate", "/api/benchmark", "/api/statements/sync", "/api/statements/investigate"}:
+        if path not in {"/api/analyze", "/api/compare", "/api/logs/import", "/api/logs/capture", "/api/logs/investigate", "/api/benchmark", "/api/statements/sync", "/api/statements/investigate", "/api/presets/execute"}:
             self.send_json({"error": "Operação não encontrada."}, 404)
             return
         try:
@@ -272,6 +305,9 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
             if not isinstance(payload, dict):
                 raise ValueError("Formato de requisição inválido.")
+            if path == '/api/presets/execute':
+                self.send_json(execute_preset(payload.get('id')))
+                return
             if path == "/api/statements/sync":
                 self.send_json(synchronize())
                 return
@@ -281,7 +317,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/logs/import":
                 if not isinstance(payload.get("content"), str) or not isinstance(payload.get("filename"), str):
                     raise ValueError("Selecione um arquivo de log.")
-                self.send_json(import_logs(payload["content"], payload["filename"]))
+                if payload.get('database_confirmed') is not True:
+                    raise ValueError('Confirme que o arquivo corresponde ao banco tcc_sql_optimizer_logs.')
+                self.send_json(import_logs(payload["content"], payload["filename"], database_name='tcc_sql_optimizer_logs'))
                 return
             if path == "/api/logs/capture":
                 self.send_json(capture_workload(payload.get("calls", 2)))
@@ -295,7 +333,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/benchmark":
                 if not all(isinstance(payload.get(k), str) for k in ("original", "alternative")):
                     raise ValueError("Preencha as duas consultas para executar o teste.")
-                self.send_json(benchmark(payload["original"], payload["alternative"], payload.get("calls", 10), payload.get("query_id")))
+                self.send_json(benchmark(payload["original"], payload["alternative"], payload.get("calls", 10), payload.get("query_id"),
+                    selection_reason=payload.get('selection_reason'), source_event_id=payload.get('source_event_id'), rule=payload.get('rule')))
                 return
             fields = ("sql",) if path == "/api/analyze" else ("original", "alternative")
             for field in fields:

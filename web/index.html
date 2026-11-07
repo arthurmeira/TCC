@@ -5,6 +5,17 @@
   <title>Observatório SQL · Logs</title>
   <link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/styles.css">
   <script src="/app.js" defer></script>
+  <style>
+    .query-review{margin:9px 0 0;padding:8px 10px;border:1px solid #e7c789;border-radius:6px;background:#fff8e9;font-size:12px;white-space:normal}
+    .query-review summary{color:#805000;font-weight:650;cursor:pointer}
+    .query-review ul{padding-left:18px;margin:8px 0}
+    .query-review p{font-size:11px;margin:8px 0 0;color:#66583e}
+    .query-review.no-review{background:transparent;border:0;padding:0;color:#687c85;font-size:11px}
+    [data-source][aria-pressed="true"]{box-shadow:0 0 0 3px #90c7bb;border-color:#126d65}
+    #log-import-form input[type="file"]{display:block;margin:12px 0;max-width:100%}
+    #log-import-form label{display:block}
+    #log-batch-list code{overflow-wrap:anywhere}
+  </style>
 </head>
 <body>
   <aside class="sidebar">
@@ -14,8 +25,7 @@
     </a>
     <nav aria-label="Navegação principal">
       <button data-page="logs" class="nav-button active" aria-current="page"><span aria-hidden="true">▤</span>Consultas SQL</button>
-      <button data-page="analyze" class="nav-button"><span aria-hidden="true">⌕</span>Analisar consulta</button>
-      <button data-page="compare" class="nav-button"><span aria-hidden="true">⇄</span>Comparar e validar</button>
+      <button data-page="history" class="nav-button"><span aria-hidden="true">◷</span>Histórico de medições</button>
     </nav>
   </aside>
   <main>
@@ -23,25 +33,45 @@
 
     <section id="page-logs" class="page">
       <div class="page-heading"><div><h1>Consultas observadas</h1><p>Escolha uma consulta registrada pelo PostgreSQL para ver seus tempos e investigar melhorias.</p></div></div>
-      <div class="panel log-actions"><button id="sync-queries" class="button primary">↻ Atualizar consultas</button><button id="capture-logs" class="button secondary">Coletar exemplos reais</button></div>
-      <p class="footnote capture-note" id="sync-context">Banco: tcc_sql_optimizer_logs · Atualizar consultas lê as estatísticas, sem executar as consultas observadas.</p>
-      <p id="log-status" class="notice info" role="status" hidden></p><div id="log-error" class="notice error" role="alert" hidden></div>
-      <div id="log-metrics" class="result-metrics"></div>
-      <article class="panel"><div class="result-toolbar log-list-heading"><div><h2>Consultas registradas</h2><p>Os tempos abaixo vêm do histórico do banco.</p></div><label class="sort-label" for="log-sort">Ordenar por <select id="log-sort"><option value="recent">Mais recentes</option><option value="oldest">Mais antigas</option><option value="total_ms">Tempo acumulado</option><option value="mean_ms">Tempo médio</option><option value="calls">Frequência</option></select></label></div><div id="log-list" aria-live="polite"></div></article>
-      <details class="panel"><summary>Experimentos salvos <span id="report-count"></span></summary><div id="saved-reports"></div></details>
-    </section>
-
-<section id="page-analyze" class="page" hidden>
-      <div class="page-heading"><div><h1>Analisar consulta</h1><p>Cole um SELECT ou escolha um exemplo para examinar seu plano e possíveis melhorias. A consulta não é executada.</p></div></div>
+      <section class="panel"><h2>Executar consulta de exemplo</h2>
+        <p>Escolha um exemplo e execute no banco de teste para gerar estatísticas.</p>
+        <div class="example-controls"><div class="example-field"><label for="run-example-select">Consulta cadastrada</label><select id="run-example-select"><option value="">Escolha um exemplo</option></select></div><button id="run-example" type="button" class="button primary" disabled>Executar consulta</button></div>
+        <p id="run-example-description" class="footnote"></p><pre id="run-example-sql" hidden></pre>
+        <p class="footnote">A execução pode levar até 30 segundos; os resultados não são exibidos na tela.</p>
+        <p id="run-example-status" class="notice info" hidden role="status"></p><p id="run-example-error" class="notice error" hidden role="alert"></p>
+      </section>
+      <section aria-labelledby="analysis-heading" hidden>
+      <div class="page-heading"><div><h2 id="analysis-heading">Investigar uma consulta SQL</h2><p>Cole um SELECT ou escolha um exemplo para examinar seu plano e possíveis melhorias. A análise do plano não executa a consulta.</p></div></div>
       <form id="analyze-form" class="panel editor-panel">
         <div class="editor-toolbar"><label for="query-select">Escolha um exemplo</label><select id="query-select"><option>Carregando exemplos…</option></select></div>
         <p id="query-description" class="query-description"></p>
         <label for="sql-input" class="editor-label">CONSULTA SQL <span>Você pode editar o exemplo ou colar um SELECT.</span></label>
         <textarea id="sql-input" class="sql-editor" spellcheck="false" aria-describedby="sql-help" placeholder="SELECT ..." required></textarea>
-        <div class="editor-footer"><p id="sql-help">Uma instrução SELECT por vez. Sem INSERT, UPDATE ou DELETE.</p><button id="analyze-button" class="button primary" type="submit">Analisar e propor melhorias <span aria-hidden="true">→</span></button></div>
+        <div class="editor-footer"><p id="sql-help">Uma instrução SELECT por vez. Sem INSERT, UPDATE ou DELETE.</p><button id="analyze-button" class="button primary" type="submit">Investigar consulta <span aria-hidden="true">→</span></button></div>
       </form>
       <div id="analysis-error" class="notice error" role="alert" hidden></div>
       <div id="analysis-result" aria-live="polite"></div>
+      </section>
+      <div class="panel log-actions"><button id="sync-queries" class="button primary">↻ Atualizar consultas</button></div>
+      <form id="log-import-form" class="panel" hidden>
+        <label for="log-file">Importar log do PostgreSQL (UTF-8, até 20 MB)</label>
+        <input id="log-file" type="file" accept=".log,.txt,.csv,.json,.jsonl" required>
+        <p class="footnote">O arquivo precisa conter SELECTs completos e suas durações. Os registros individuais serão agrupados por estrutura SQL, sem somá-los às estatísticas.</p>
+        <label><input id="log-database-confirmed" type="checkbox" required> Confirmo que o arquivo corresponde ao banco tcc_sql_optimizer_logs desta instalação.</label>
+        <p class="footnote">Se o registro informar outro banco, essa informação será preservada e sua investigação será bloqueada.</p>
+        <button id="import-log-button" type="submit" class="button primary">Importar arquivo</button>
+      </form>
+      <p class="footnote capture-note" id="sync-context">Banco: tcc_sql_optimizer_logs · Atualizar consultas lê as estatísticas, sem executar as consultas observadas.</p>
+      <p id="log-status" class="notice info" role="status" hidden></p><div id="log-error" class="notice error" role="alert" hidden></div>
+      <div id="log-metrics" class="result-metrics"></div>
+      <details id="log-batches" class="panel" hidden><summary>Arquivos e lotes importados</summary><div id="log-batch-list"></div></details>
+      <article class="panel"><div class="result-toolbar log-list-heading"><div><h2>Consultas registradas</h2><p id="source-description">Registros individuais dos arquivos importados.</p></div><label class="sort-label" for="log-sort">Ordenar por <select id="log-sort"><option value="total_ms">Tempo acumulado</option><option value="mean_ms">Tempo médio</option><option value="calls">Frequência</option><option value="recent">Mais recentes</option><option value="oldest">Mais antigas</option></select></label></div><div id="log-list" aria-live="polite"></div><nav id="log-pagination" class="pagination" aria-label="Páginas das consultas"></nav></article>
+    </section>
+
+    <section id="page-history" class="page" hidden>
+      <div class="page-heading"><div><h1>Histórico de medições</h1><p>Consulte as rodadas concluídas e exporte os resultados.</p></div></div>
+      <div id="history-overview" class="history-overview" aria-label="Resumo das medições"></div>
+      <section class="panel history-panel" aria-labelledby="history-heading"><div class="result-toolbar history-toolbar"><div><h2 id="history-heading">Resultados salvos <span id="report-count"></span></h2><p class="muted">Até 1.000 registros, do mais recente para o mais antigo.</p></div><button id="export-history" type="button" class="button secondary">Exportar todos em CSV</button></div><div class="history-filters"><label>Buscar consulta ou regra<input type="search" id="history-search" placeholder="Ex.: pedidos, EXTRACT, e-mail"></label><label>Resultado<select id="history-filter"><option value="all">Todos os resultados</option><option value="faster">Tempo menor</option><option value="slower">Tempo maior</option><option value="same">Sem diferença</option><option value="no_proposal">Sem alternativa automática</option><option value="not_equivalent">Resultados diferentes</option><option value="plan_unavailable">Plano indisponível</option><option value="unknown">Não informado</option></select></label></div><p id="history-filter-count" class="footnote" aria-live="polite"></p><div id="saved-reports" aria-live="polite"></div><nav id="history-pagination" class="pagination" aria-label="Páginas do histórico"></nav></section>
     </section>
 
     <section id="page-compare" class="page" hidden>

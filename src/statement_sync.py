@@ -18,6 +18,7 @@ from psycopg.rows import dict_row
 from src.collector import inspect_extension
 from src.database import get_connection
 from src.execution_logs import connect
+from src.query_triage import review_signal
 
 SYNC_LOCK = threading.Lock()
 COUNTERS = ("calls", "total_exec_time", "rows", "shared_blks_hit", "shared_blks_read",
@@ -222,6 +223,8 @@ def list_statements():
     total = sum(r["total_exec_time"] for r in records if r["active"])
     for r in records:
         r.update(total_ms=r["total_exec_time"],mean_ms=r["mean_exec_time"],share=r["total_exec_time"]/total*100 if total and r["active"] else 0,variants=None)
+    for r in records:
+        r['review'] = review_signal(r)
     return dict(queries=records,calls=sum(r["calls"] for r in records if r["active"]),total_ms=total,
                 latest=dict(context=json.loads(last["context"]),summary=json.loads(last["summary"])) if last else None)
 

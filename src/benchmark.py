@@ -14,8 +14,9 @@ from datetime import datetime, timezone
 from time import perf_counter
 
 from src.database import get_connection
-from src.execution_logs import save_experiment
+from src.execution_logs import save_experiment, log_origin
 from src.optimization import executable_select, parse_select
+from src.measurement_resources import resource_sample, summarize_resources
 
 RUN_LOCK = threading.Lock()
 MAX_ROWS = 3_000_000
@@ -76,17 +77,27 @@ def result_signature(connection, query, ordered):
     return dict(rows=count,columns=columns,signature=sequence.hexdigest() if ordered else f"{digest:064x}")
 
 
-def benchmark(original, alternative, calls=10, query_id=None):
+def benchmark(original, alternative, calls=10, query_id=None, *, selection_reason=None, source_event_id=None, rule=None):
     if type(calls) is not int or not 3 <= calls <= 50:
         raise ValueError("Escolha de 3 a 50 repetições por versão.")
     original, alternative = executable_select(original), executable_select(alternative)
     if original == alternative:
         raise ValueError("As versões são iguais. Informe uma alteração para comparar.")
+    origin = dict(kind='manual_or_preset', note='SQL fornecido diretamente; sem vínculo comprovado com log.')
+    if query_id:
+        if not isinstance(query_id, str):
+            raise ValueError('Identificador de consulta inválido.')
+        if query_id.startswith('pg:'):
+            origin = dict(kind='pg_stat_statements', statement_id=query_id,
+                          note='Consulta selecionada nas estatísticas agregadas; não é um evento individual de log.')
+        else:
+            origin = log_origin(query_id, source_event_id, selection_reason, original)
     if not RUN_LOCK.acquire(blocking=False):
         raise ValueError("Já existe um teste em andamento. Aguarde sua conclusão.")
     try:
         started = perf_counter()
         measurements = {"original": [], "alternative": []}
+        resources = {"original": [], "alternative": []}
         plans, signatures = {}, {}
         queries = dict(original=original,alternative=alternative)
         with get_connection() as connection:
@@ -96,10 +107,18 @@ def benchmark(original, alternative, calls=10, query_id=None):
                 cursor.execute("SET LOCAL statement_timeout='30s'")
                 cursor.execute("SET LOCAL lock_timeout='3s'")
                 cursor.execute("SET LOCAL search_path=pg_catalog,public")
+                cursor.execute("SELECT current_database(), current_setting('server_version')")
+                database_name, server_version = cursor.fetchone()
             for label, query in queries.items():
                 signatures[label] = result_signature(connection,query,bool(parse_select(query).sortClause))
             equivalent = signatures["original"] == signatures["alternative"]
             if not equivalent:
+                save_experiment(dict(id=uuid.uuid4().hex, created_at=datetime.now(timezone.utc).isoformat(),
+                    query_id=query_id, original_sql=original, alternative_sql=alternative,
+                    status='not_equivalent', verdict='Resultados diferentes', equivalent=False,
+                    reduction_pct=None, metrics={}, signatures=signatures, rule=rule,
+                    environment=dict(database=database_name, postgresql_version=server_version),
+                    reason='As assinaturas ou colunas diferem; a comparação de desempenho não foi realizada.'))
                 raise ValueError("As assinaturas dos resultados ou as colunas diferem. A alteração não foi validada; nenhum ganho será apresentado.")
             # Aquecimento explícito; não entra nos tempos publicados.
             schedule = ["original", "alternative"] + ["original"] * calls + ["alternative"] * calls
@@ -113,19 +132,29 @@ def benchmark(original, alternative, calls=10, query_id=None):
                 plans[label] = plan
                 if position >= 2:
                     measurements[label].append(float(plan["Execution Time"]))
+                    resources[label].append(resource_sample(plan))
         summary = {}
         for label, values in measurements.items():
             summary[label] = dict(calls=len(values),mean_ms=statistics.mean(values),median_ms=statistics.median(values),
                                   min_ms=min(values),max_ms=max(values),stdev_ms=statistics.stdev(values),samples_ms=values,
-                                  rows=signatures[label]["rows"],root_node=plans[label]["Plan"]["Node Type"],plan=plans[label])
+                                  rows=signatures[label]["rows"],root_node=plans[label]["Plan"]["Node Type"],plan=plans[label],
+                                  resources=summarize_resources(resources[label]))
         before, after = summary["original"]["median_ms"],summary["alternative"]["median_ms"]
         reduction = (before-after)/before*100 if before > 0 else None
         verdict = "Tempo menor nesta rodada" if reduction is not None and reduction > 0 else "Tempo maior nesta rodada" if reduction is not None and reduction < 0 else "Sem redução nesta rodada"
         report = dict(id=uuid.uuid4().hex,created_at=datetime.now(timezone.utc).isoformat(),query_id=query_id,
-                      original_sql=original,alternative_sql=alternative,metrics=summary,reduction_pct=reduction,verdict=verdict,
+                      original_sql=original,alternative_sql=alternative,metrics=summary,reduction_pct=reduction,verdict=verdict,origin=origin,
                       equivalent=True,result_check="SHA-256 por linha, contagem e colunas; multiconjunto sem ORDER BY. Com ORDER BY projetado, sequência de grupos empatados, preservando duplicatas dentro de cada grupo; outros casos usam sequência estrita. Mesma fotografia transacional dos dados.",
                       signatures=signatures,method="EXPLAIN ANALYZE, BUFFERS, TIMING FALSE; 1 aquecimento por versão e repetições intercaladas, semente 2026. Tempos do servidor, incluindo instrumentação do EXPLAIN. Comparação descritiva da rodada, sem teste de significância.",
-                      elapsed_seconds=perf_counter()-started)
+                      elapsed_seconds=perf_counter()-started,
+                      rule=rule if isinstance(rule, str) and len(rule) <= 200 else None,
+                      environment=dict(database=database_name, postgresql_version=server_version))
+        report['resource_method'] = (
+            'Blocos: contadores da raiz do plano de cada repetição, sem somar os filhos. '
+            'Shared hits são acessos atendidos pelo cache do PostgreSQL; shared reads podem vir do cache do sistema operacional, não comprovam leituras físicas do disco. '
+            'Linhas: saída da consulta e linhas por operação (Actual Rows × Actual Loops); não somar operações como linhas únicas. '
+            'Métricas do plano exibem medianas das repetições medidas; amostras e operações de cada plano estão no JSON. '
+            'Os tempos de execução do servidor são medidos separadamente e apresentados com mediana, média, mínimo e máximo.')
         save_experiment(report)
         return report
     finally:

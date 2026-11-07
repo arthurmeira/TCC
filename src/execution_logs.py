@@ -15,6 +15,7 @@ from pglast import fingerprint
 from pglast.parser import ParseError
 from src.analyzer import validate_select
 from src.config import PROJECT_ROOT
+from src.query_triage import review_signal
 
 STORE = PROJECT_ROOT / "results" / "logs.sqlite3"
 MAX_BYTES = 20 * 1024 * 1024
@@ -142,8 +143,15 @@ def list_queries() -> dict:
         total = sum(row["total_ms"] for row in rows)
         queries = []
         for row in rows:
-            sample = db.execute("SELECT sql, duration_ms FROM events WHERE fingerprint=? ORDER BY duration_ms DESC, id LIMIT 1", (row["id"],)).fetchone()
-            queries.append({**dict(row), "sql": sample["sql"], "share": row["total_ms"] / total * 100 if total else 0})
+            sample = db.execute("SELECT * FROM events WHERE fingerprint=? ORDER BY duration_ms DESC, id LIMIT 1", (row["id"],)).fetchone()
+            batches = [dict(r) for r in db.execute('''SELECT i.*,COUNT(e.id) AS group_events
+                FROM imports i JOIN events e ON e.import_id=i.id
+                WHERE e.fingerprint=? GROUP BY i.id ORDER BY i.imported_at''', (row['id'],))]
+            query = {**dict(row), "sql": sample["sql"], "share": row["total_ms"] / total * 100 if total else 0,
+                     "source": "execution_log", "selected_event": dict(sample), "batches": batches,
+                     "sample_policy": "Execução de maior duração no grupo; desempate pelo ID do evento."}
+            query['review'] = review_signal(query)
+            queries.append(query)
         imports = [dict(row) for row in db.execute("SELECT * FROM imports ORDER BY imported_at DESC")]
     return dict(queries=queries, imports=imports, calls=sum(q["calls"] for q in queries), total_ms=total)
 
@@ -160,6 +168,31 @@ def save_experiment(report: dict):
         db.execute("INSERT INTO experiments VALUES (?,?,?)", (report["id"], report["created_at"], json.dumps(report, ensure_ascii=False)))
 
 
+def log_origin(query_id, event_id, selection_reason, original_sql):
+    """Resolve a origem no armazenamento, nunca a partir de metadados do cliente."""
+    from src.optimization import executable_select
+    if not isinstance(selection_reason, str) or not 1 <= len(selection_reason.strip()) <= 2000:
+        raise ValueError('Informe o motivo da seleção desta consulta dos logs (até 2.000 caracteres).')
+    record = get_query(query_id)
+    if not isinstance(event_id, str):
+        raise ValueError('Selecione novamente a execução de origem na lista de logs.')
+    with connect() as db:
+        event = db.execute('SELECT * FROM events WHERE id=? AND fingerprint=?', (event_id, query_id)).fetchone()
+        if event is None:
+            raise ValueError('O evento de origem não pertence à consulta selecionada.')
+        batch = dict(db.execute('SELECT * FROM imports WHERE id=?', (event['import_id'],)).fetchone())
+        event = dict(event)
+    if event['database_name'] not in {None, 'tcc_sql_optimizer_logs'}:
+        raise ValueError('O registro de origem pertence a outro banco.')
+    return dict(kind='execution_log', group_id=query_id, event=event, batch=batch,
+                content_sha256=batch['id'], selection_reason=selection_reason.strip(),
+                selection_kind='manual_supported_by_history', triage=record['review'],
+                captured_at=datetime.now(timezone.utc).isoformat(),
+                history_at_measurement={k:record[k] for k in ('calls','total_ms','mean_ms','max_ms','variants')},
+                original_matches_event=executable_select(event['sql']) == executable_select(original_sql),
+                sample_policy=record['sample_policy'])
+
+
 def reports():
     with connect() as db:
-        return [json.loads(row[0]) for row in db.execute("SELECT report FROM experiments ORDER BY created_at DESC LIMIT 100")]
+        return [json.loads(row[0]) for row in db.execute("SELECT report FROM experiments ORDER BY created_at DESC LIMIT 1000")]
