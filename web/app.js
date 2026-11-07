@@ -146,7 +146,7 @@ async function start() {
     state.presets = await api("/api/presets");
     const exampleOption=q=>`<option value="${esc(q.id)}">${esc(q.id)} · ${esc(q.title)}</option>`;
     $("query-select").innerHTML=state.presets.queries.map(exampleOption).join('')+'<option value="custom">Minha própria consulta</option>';
-    $("run-example-select").innerHTML='<option value="">Escolha uma consulta</option>'+state.presets.queries.map(exampleOption).join('');
+    $("run-example-select").innerHTML='<option value="">Escolha uma consulta</option>'+state.presets.queries.map(exampleOption).join('')+'<option value="custom">Escrever minha consulta</option>';
     selectExample("C01");
     $("comparison-condition").textContent="Confira se as duas consultas retornam os mesmos dados.";
   } catch(error) { message("global-error",error.message); }
@@ -155,25 +155,28 @@ async function start() {
 
 $("run-example-select").addEventListener('change',event=>{
   const example=state.presets?.queries.find(q=>q.id===event.target.value);
-  $("run-example").disabled=!example;
+  const custom=event.target.value==='custom';
+  $("run-custom-field").hidden=!custom;
+  $("run-example").disabled=custom?!$("run-custom-sql").value.trim():!example;
   $("run-example-description").textContent=example?.description||'';
   $("run-example-sql").textContent=example?.sql||'';
   $("run-example-sql").hidden=!example;
   message('run-example-status','');message('run-example-error','');
 });
+$("run-custom-sql").addEventListener('input',event=>{$("run-example").disabled=!event.target.value.trim();});
 $("run-example").addEventListener('click',async()=>{
-  const button=$("run-example"),select=$("run-example-select"),id=select.value;
+  const button=$("run-example"),select=$("run-example-select"),input=$("run-custom-sql"),id=select.value;
   if(!id)return;
-  button.disabled=true;select.disabled=true;message('run-example-error','');message('run-example-status','Executando a consulta no banco de teste…');
+  button.disabled=true;select.disabled=true;input.disabled=true;message('run-example-error','');message('run-example-status','Executando a consulta no banco de teste…');
   try{
-    const result=await api('/api/presets/execute',{id});
+    const result=id==='custom'?await api('/api/query/execute',{sql:input.value}):await api('/api/presets/execute',{id});
     message('run-example-status',`${result.title}: execução concluída (${number(result.rows)} linhas). Atualizando estatísticas…`);
     try{
       await api('/api/statements/sync',{});state.source='postgres';await loadLogs();
       message('run-example-status',`${result.title}: execução concluída (${number(result.rows)} linhas) e estatísticas atualizadas. Procure a consulta na lista abaixo; ela pode estar agrupada com chamadas anteriores.`);
     }catch(error){message('run-example-status',`${result.title}: execução concluída (${number(result.rows)} linhas). A atualização das estatísticas falhou; use Atualizar consultas.`);message('run-example-error',error.message);}
   }catch(error){message('run-example-status','');message('run-example-error',error.message);}
-  finally{button.disabled=false;select.disabled=false;}
+  finally{button.disabled=false;select.disabled=false;input.disabled=false;}
 });
 
 function shortSql(sql) { return sql.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g," ").trim(); }
@@ -186,6 +189,16 @@ function paginate(items,kind){
   return items.slice((pageState[kind]-1)*pageSize,pageState[kind]*pageSize);
 }
 document.addEventListener('click',event=>{const button=event.target.closest('[data-pagination]');if(!button)return;const kind=button.dataset.pagination;pageState[kind]=Number(button.dataset.number);if(kind==='logs')renderLogList();else renderHistory();});
+function historySqlCard(label, sql, formatted, index, side){
+  if(!sql) return '';
+  return `<section class="history-sql"><div class="sql-toolbar"><div><span class="eyebrow">CONSULTA SQL</span><h4>${label}</h4></div><button type="button" class="text-button" data-history-copy="${index}" data-side="${side}">Copiar SQL</button></div><pre class="selected-sql formatted-sql"><code>${sqlMarkup(formatted || sql)}</code></pre></section>`;
+}
+function historySamples(items,side){return items.flatMap(({r})=>Array.isArray(r.metrics?.[side]?.samples_ms)?r.metrics[side].samples_ms.filter(v=>typeof v==='number'&&Number.isFinite(v)):[]);}
+function historyAverage(values){return values.length?values.reduce((sum,v)=>sum+v,0)/values.length:null;}
+function historyChange(items){
+  const original=historyAverage(historySamples(items,'original')),alternative=historyAverage(historySamples(items,'alternative'));
+  return original>0&&alternative!=null?(alternative-original)/original*100:null;
+}
 function renderHistory(){
   $('report-count').textContent=`(${state.reports.length})`;
   $('export-history').disabled=!state.reports.length;
@@ -194,28 +207,36 @@ function renderHistory(){
   const count=key=>state.reports.filter(r=>outcome(r)===key).length;
   $('history-overview').innerHTML=[['Registros',state.reports.length,'Total apresentado'],['Tempo menor',count('faster'),'Alternativa mais rápida'],['Tempo maior',count('slower'),'Alternativa mais lenta'],['Sem resultado medido',count('no_proposal')+count('not_equivalent')+count('plan_unavailable')+count('unknown'),'Sem comparação de tempo']].map(([title,value,note])=>`<div class="history-stat"><span>${title}</span><strong>${number(value)}</strong><small>${note}</small></div>`).join('');
   const term=$('history-search').value.trim().toLocaleLowerCase('pt-BR'),filter=$('history-filter').value;
-  const visible=state.reports.map((r,i)=>({r,i})).filter(({r})=>(filter==='all'||outcome(r)===filter)&&(!term||[r.original_sql,r.alternative_sql,r.rule,r.id].some(v=>String(v||'').toLocaleLowerCase('pt-BR').includes(term))));
+  const visible=state.reports.map((r,i)=>({r,i})).filter(({r})=>!term||[r.original_sql,r.alternative_sql,r.rule,r.id].some(v=>String(v||'').toLocaleLowerCase('pt-BR').includes(term)));
   const groups=new Map();
   for(const item of visible){
     const key=item.r.original_sql ? JSON.stringify([item.r.original_sql.trim(),item.r.alternative_sql?.trim()||'',item.r.status||'measured']) : `sem-sql-${item.i}`;
     if(!groups.has(key))groups.set(key,[]);
     groups.get(key).push(item);
   }
-  $('history-filter-count').textContent=state.reports.length?`${groups.size} pares de consultas · ${visible.length} de ${state.reports.length} rodadas exibidas` : '';
-  const displayedGroups=paginate(Array.from(groups.values()),'history');
-  $('saved-reports').innerHTML=visible.length ? displayedGroups.map((items,index)=>{
+  const filteredGroups=Array.from(groups.values()).filter(items=>{
+    if(filter==='all')return true;
+    const status=items[0].r.status;
+    if(['no_proposal','not_equivalent','plan_unavailable'].includes(status))return filter===status;
+    const change=historyChange(items);
+    const result=change===null?'unknown':change<0?'faster':change>0?'slower':'same';
+    return filter===result;
+  });
+  const visibleCount=filteredGroups.reduce((total,items)=>total+items.length,0);
+  $('history-filter-count').textContent=state.reports.length?`${filteredGroups.length} pares de consultas · ${visibleCount} de ${state.reports.length} rodadas exibidas` : '';
+  const displayedGroups=paginate(filteredGroups,'history');
+  $('saved-reports').innerHTML=filteredGroups.length ? displayedGroups.map((items,index)=>{
     const rowNumber=(pageState.history-1)*pageSize+index+1;
-    const latest=items[0].r, snippet=shortSql(latest.original_sql||'SQL original indisponível');
-    if(['no_proposal','not_equivalent','plan_unavailable'].includes(latest.status))return `<details class="history-pair"><summary class="history-pair-heading"><span class="list-row-number history-row-number">${rowNumber}</span><div><span class="history-group-count">${items.length} ${items.length===1?'registro':'registros'} · última: ${esc(dateLabel(latest.created_at))}</span><strong class="history-query">${esc(snippet)}</strong></div><span class="history-pair-change">${esc(labels[latest.status])}</span><span class="history-open">Ver detalhes ↓</span></summary><div class="history-pair-content"><p>${esc(latest.reason||labels[latest.status])}</p><p class="footnote">Não há tempos de comparação para este registro.</p><details><summary>Ver consultas completas</summary><h4>Original</h4><pre>${esc(latest.original_sql||'Indisponível')}</pre>${latest.alternative_sql?`<h4>Alternativa</h4><pre>${esc(latest.alternative_sql)}</pre>`:''}</details><button class="text-button" type="button" data-history-group="${items.map(x=>x.i).join(',')}">↓ Baixar registros em JSON</button></div></details>`;
-    const samples=side=>items.flatMap(({r})=>Array.isArray(r.metrics?.[side]?.samples_ms)?r.metrics[side].samples_ms.filter(v=>typeof v==='number'&&Number.isFinite(v)):[]);
+    const latest=items[0].r, formatted=state.formattedReports?.[items[0].i] || {}, snippet=shortSql(latest.original_sql||'SQL original indisponível');
+    if(['no_proposal','not_equivalent','plan_unavailable'].includes(latest.status))return `<details class="history-pair"><summary class="history-pair-heading"><span class="list-row-number history-row-number">${rowNumber}</span><div><span class="history-group-count">${items.length} ${items.length===1?'registro':'registros'} · última: ${esc(dateLabel(latest.created_at))}</span><strong class="history-query">${esc(snippet)}</strong></div><span class="history-pair-change">${esc(labels[latest.status])}</span><span class="history-open">Ver detalhes ↓</span></summary><div class="history-pair-content"><p>${esc(latest.reason||labels[latest.status])}</p><p class="footnote">Não há tempos de comparação para este registro.</p><details><summary>Ver consultas completas</summary>${historySqlCard('Original',latest.original_sql,formatted.original,items[0].i,'original')}${historySqlCard('Alternativa',latest.alternative_sql,formatted.alternative,items[0].i,'alternative')}</details><button class="text-button" type="button" data-history-group="${items.map(x=>x.i).join(',')}">↓ Baixar registros em JSON</button></div></details>`;
+    const samples=side=>historySamples(items,side);
     const original=samples('original'),alternative=samples('alternative');
-    const average=values=>values.length?values.reduce((sum,v)=>sum+v,0)/values.length:null;
+    const average=historyAverage;
     const stat=v=>v==null?'Indisponível':duration(v);
-    const meanOriginal=average(original),meanAlternative=average(alternative);
-    const change=meanOriginal>0&&meanAlternative!=null?(meanAlternative-meanOriginal)/meanOriginal*100:null;
+    const change=historyChange(items);
     const changeText=change==null?'Comparação indisponível':`${number(Math.abs(change),2)}% ${change<0?'menor':change>0?'maior':'de diferença'} no tempo médio da alternativa`;
     const row=(label,values)=>`<tr><td>${label}</td><td>${number(values.length)}</td><td>${stat(average(values))}</td><td>${stat(values.length?Math.min(...values):null)}</td><td>${stat(values.length?Math.max(...values):null)}</td></tr>`;
-    return `<details class="history-pair"><summary class="history-pair-heading"><span class="list-row-number history-row-number">${rowNumber}</span><div><span class="history-group-count">${items.length} ${items.length===1?'rodada':'rodadas'} · última: ${esc(dateLabel(latest.created_at))}</span><strong class="history-query">${esc(snippet)}</strong></div><span class="history-pair-change ${change==null?'unavailable':change<0?'faster':change>0?'slower':'same'}">${changeText}</span><span class="history-open">Ver detalhes ↓</span></summary><div class="history-pair-content"><table class="comparison-table"><thead><tr><th>Versão</th><th>Execuções medidas</th><th>Tempo médio</th><th>Menor tempo</th><th>Maior tempo</th></tr></thead><tbody>${row('Original',original)}${row('Alternativa',alternative)}</tbody></table><p class="footnote">Resumo das amostras disponíveis nas rodadas exibidas; aquecimentos não incluídos.</p><details><summary>Ver consultas completas</summary><h4>Original</h4><pre>${esc(latest.original_sql||'Indisponível')}</pre><h4>Alternativa</h4><pre>${esc(latest.alternative_sql||'Indisponível')}</pre></details><button class="text-button" type="button" data-history-group="${items.map(x=>x.i).join(',')}">↓ Baixar relatórios deste resumo em JSON</button></div></details>`;
+    return `<details class="history-pair"><summary class="history-pair-heading"><span class="list-row-number history-row-number">${rowNumber}</span><div><span class="history-group-count">${items.length} ${items.length===1?'rodada':'rodadas'} · última: ${esc(dateLabel(latest.created_at))}</span><strong class="history-query">${esc(snippet)}</strong></div><span class="history-pair-change ${change==null?'unavailable':change<0?'faster':change>0?'slower':'same'}">${changeText}</span><span class="history-open">Ver detalhes ↓</span></summary><div class="history-pair-content"><table class="comparison-table"><thead><tr><th>Versão</th><th>Execuções medidas</th><th>Tempo médio</th><th>Menor tempo</th><th>Maior tempo</th></tr></thead><tbody>${row('Original',original)}${row('Alternativa',alternative)}</tbody></table><p class="footnote">Resumo das amostras disponíveis nas rodadas exibidas; aquecimentos não incluídos.</p><details><summary>Ver consultas completas</summary>${historySqlCard('Original',latest.original_sql,formatted.original,items[0].i,'original')}${historySqlCard('Alternativa',latest.alternative_sql,formatted.alternative,items[0].i,'alternative')}</details><button class="text-button" type="button" data-history-group="${items.map(x=>x.i).join(',')}">↓ Baixar relatórios deste resumo em JSON</button></div></details>`;
   }).join('') : `<p class="muted">${state.reports.length?'Nenhuma medição corresponde à busca ou ao filtro.':'Nenhuma medição salva. Investigue uma consulta e clique em Medir desempenho para registrar uma rodada.'}</p>`;
 }
 $('history-search').addEventListener('input',()=>{pageState.history=1;renderHistory();});
@@ -227,14 +248,15 @@ $('export-history').addEventListener('click',()=>{
   const url=URL.createObjectURL(new Blob(['\ufeff',cols.map(cell).join(';'),'\r\n',lines.join('\r\n')],{type:'text/csv;charset=utf-8'}));
   const link=document.createElement('a');link.href=url;link.download='historico-medicoes.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
-$('saved-reports').addEventListener('click',event=>{const button=event.target.closest('[data-history-group]');if(button){const reports=button.dataset.historyGroup.split(',').map(i=>state.reports[Number(i)]);download('medicoes-da-consulta.json',reports);}});
+$('saved-reports').addEventListener('click',async event=>{const copy=event.target.closest('[data-history-copy]');if(copy){try{await navigator.clipboard.writeText(state.reports[Number(copy.dataset.historyCopy)][copy.dataset.side+'_sql']);copy.textContent='Copiado';}catch{copy.textContent='Não foi possível copiar';}return;}const button=event.target.closest('[data-history-group]');if(button){const reports=button.dataset.historyGroup.split(',').map(i=>state.reports[Number(i)]);download('medicoes-da-consulta.json',reports);}});
 async function loadLogs() {
   try {
     const source=state.source;
     const data=await api(source==='logs'?'/api/logs':'/api/statements');
     if(source==='logs')state.logs=data;else state.observed=data;
     renderLogList();
-    state.reports=(await api("/api/reports")).reports;
+    const reportData=await api("/api/reports");
+    state.reports=reportData.reports;state.formattedReports=reportData.formatted_sql;
     $("report-count").textContent=`(${state.reports.length})`;
     renderHistory();
   } catch(error) { message("log-error",error.message); }

@@ -16,6 +16,7 @@ import webbrowser
 
 import psycopg
 from pglast import prettify
+from pglast.parser import ParseError
 
 from scripts.generate_workload import QUERY_FILE, load_queries
 from src.analyzer import (
@@ -76,8 +77,15 @@ def execute_preset(preset_id):
     selected = next((q for q in presets()['queries'] if q['id'] == preset_id), None)
     if selected is None:
         raise ValueError('Consulta cadastrada não encontrada.')
+    return execute_read_query(selected['sql'], selected['title'], selected['id'])
+
+
+def execute_read_query(query, title='Consulta própria', query_id=None):
+    """Valida e executa uma consulta de leitura no banco configurado."""
     from src.optimization import executable_select
-    query = executable_select(selected['sql'])
+    if not isinstance(query, str):
+        raise ValueError('Informe o SQL da consulta.')
+    query = executable_select(query)
     if not RUN_LOCK.acquire(blocking=False):
         raise ValueError('Outro teste ou coleta está em andamento. Aguarde sua conclusão.')
     try:
@@ -88,7 +96,7 @@ def execute_preset(preset_id):
                 cursor.execute("SET LOCAL lock_timeout='3s'")
                 cursor.execute('SET LOCAL search_path=pg_catalog,public')
                 rows = sum(1 for _ in cursor.stream(query, size=2000))
-        return {'id': selected['id'], 'title': selected['title'], 'rows': rows}
+        return {'id': query_id, 'title': title, 'rows': rows}
     finally:
         RUN_LOCK.release()
 
@@ -267,7 +275,18 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/logs":
                 self.send_json(list_queries())
             elif path == "/api/reports":
-                self.send_json({"reports": reports()})
+                saved = reports()
+                def format_sql(value):
+                    if not value:
+                        return value
+                    try:
+                        return prettify(value, comma_at_eoln=True, safety_belt=True)
+                    except (ValueError, TypeError, ParseError):
+                        return value
+                self.send_json({"reports": saved, "formatted_sql": [
+                    {side: format_sql(report.get(side + "_sql")) for side in ("original", "alternative")}
+                    for report in saved
+                ]})
             elif path == "/api/overview":
                 self.send_json(overview())
             elif path in {"/", "/app.js", "/styles.css", "/favicon.svg"}:
@@ -292,7 +311,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "Abra a interface pelo endereço local."}, 403)
             return
         path = urlsplit(self.path).path
-        if path not in {"/api/analyze", "/api/compare", "/api/logs/import", "/api/logs/capture", "/api/logs/investigate", "/api/benchmark", "/api/statements/sync", "/api/statements/investigate", "/api/presets/execute"}:
+        if path not in {"/api/analyze", "/api/compare", "/api/logs/import", "/api/logs/capture", "/api/logs/investigate", "/api/benchmark", "/api/statements/sync", "/api/statements/investigate", "/api/presets/execute", "/api/query/execute"}:
             self.send_json({"error": "Operação não encontrada."}, 404)
             return
         try:
@@ -307,6 +326,9 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("Formato de requisição inválido.")
             if path == '/api/presets/execute':
                 self.send_json(execute_preset(payload.get('id')))
+                return
+            if path == '/api/query/execute':
+                self.send_json(execute_read_query(payload.get('sql')))
                 return
             if path == "/api/statements/sync":
                 self.send_json(synchronize())

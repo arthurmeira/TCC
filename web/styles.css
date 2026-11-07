@@ -181,6 +181,7 @@ button:disabled{cursor:not-allowed}
 .example-field label{font-weight:600;font-size:13px}
 .example-field select{width:100%}
 .example-controls .button{white-space:nowrap;min-height:48px}
+.run-custom-field{max-width:760px;margin-top:18px}.run-custom-field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}.run-custom-field textarea{display:block;width:100%;resize:vertical;border:1px solid var(--line);border-radius:6px;background:#f8fbf9;padding:14px;font-family:Consolas,monospace;font-size:13px;line-height:1.6}.run-custom-field .footnote{margin-top:6px}
 @media(max-width:600px){.example-controls{align-items:stretch;flex-direction:column}.example-controls .button{width:100%}}
 .history-report{border-top:1px solid var(--line);padding:14px 0}
 .history-report>summary{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;cursor:pointer}
@@ -211,3 +212,5 @@ button:disabled{cursor:not-allowed}
 @media(max-width:700px){.history-pair-heading{flex-direction:row;flex-wrap:wrap;align-items:flex-start}.history-pair-heading>div{flex:1 1 calc(100% - 52px)}.history-pair-heading .history-open{margin-left:auto}}
 .observed-card-heading{padding:16px 20px;margin:0;min-height:76px}.observed-card-heading:hover{background:#f5faf8}.observed-card .query-row-number{position:static;flex-shrink:0}.observed-card-main{min-width:0}.observed-review{flex-shrink:0;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600}.observed-review.needs-review{background:#fff3d8;color:#805000}.observed-review.no-review{background:#edf3f1;color:#617880}.observed-investigate{flex-shrink:0;white-space:nowrap}.observed-review-details{padding:0 20px 16px 68px;font-size:12px;color:#526a6d}.observed-review-details summary{cursor:pointer;color:#087d77;font-weight:600}.observed-review-details ul{padding-left:18px;margin:8px 0}.observed-review-details .footnote{margin:8px 0 0}
 @media(max-width:700px){.observed-card-heading{flex-direction:row;flex-wrap:wrap;align-items:flex-start}.observed-card-main{flex:1 1 calc(100% - 50px)}.observed-card .history-query{white-space:normal;overflow-wrap:anywhere}.observed-review-details{padding-left:20px}}
+
+.history-sql{margin:20px 0}.history-sql h4{margin:6px 0 12px}.history-sql .formatted-sql{margin:0;max-height:none;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:4;font-size:13px;line-height:1.8;border:1px solid #e2eae6}

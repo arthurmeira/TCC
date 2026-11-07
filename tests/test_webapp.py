@@ -50,6 +50,16 @@ class WebappTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.request(path)[0], 404)
 
+    def test_report_sql_formatting_preserves_original_and_handles_invalid_sql(self):
+        saved = [{"original_sql": "select id from public.clientes where id = 1", "alternative_sql": "SELECT ('"}]
+        with patch("src.webapp.reports", return_value=saved):
+            status, content, _ = self.request("/api/reports")
+        result = json.loads(content)
+        self.assertEqual(status, 200)
+        self.assertEqual(result["reports"], saved)
+        self.assertIn("\n", result["formatted_sql"][0]["original"])
+        self.assertEqual(result["formatted_sql"][0]["alternative"], "SELECT ('")
+
     def test_only_one_server_can_listen_on_the_port(self):
         with self.assertRaises(OSError):
             duplicate = LocalServer(("127.0.0.1", self.port), QuietHandler)

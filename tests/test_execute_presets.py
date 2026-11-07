@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from src.optimization import executable_select
-from src.webapp import execute_preset, presets
+from src.webapp import execute_preset, execute_read_query, presets
 
 
 class ExecutePresetsTests(unittest.TestCase):
@@ -30,3 +30,21 @@ class ExecutePresetsTests(unittest.TestCase):
         self.assertTrue(connection.read_only)
         self.assertEqual(result['rows'], 2)
         self.assertEqual(cursor.stream.call_count, 1)
+
+    def test_custom_query_uses_read_only_execution(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.stream.return_value = iter([(1,)])
+        with patch('src.webapp.get_connection') as connect:
+            connect.return_value.__enter__.return_value = connection
+            result = execute_read_query('SELECT id FROM public.clientes')
+        self.assertTrue(connection.read_only)
+        self.assertEqual(result['rows'], 1)
+        self.assertEqual(cursor.stream.call_count, 1)
+
+    def test_custom_rejects_unsafe_sql_before_connecting(self):
+        with patch('src.webapp.get_connection') as connect:
+            for query in (None, '', 'DELETE FROM public.clientes', 'SELECT pg_sleep(1)', 'SELECT * FROM public.clientes FOR UPDATE'):
+                with self.subTest(query=query), self.assertRaises(ValueError):
+                    execute_read_query(query)
+            connect.assert_not_called()

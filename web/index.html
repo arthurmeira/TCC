@@ -33,9 +33,10 @@
 
     <section id="page-logs" class="page">
       <div class="page-heading"><div><h1>Consultas observadas</h1><p>Escolha uma consulta registrada pelo PostgreSQL para ver seus tempos e investigar melhorias.</p></div></div>
-      <section class="panel"><h2>Executar consulta de exemplo</h2>
-        <p>Escolha um exemplo e execute no banco de teste para gerar estatísticas.</p>
-        <div class="example-controls"><div class="example-field"><label for="run-example-select">Consulta cadastrada</label><select id="run-example-select"><option value="">Escolha um exemplo</option></select></div><button id="run-example" type="button" class="button primary" disabled>Executar consulta</button></div>
+      <section class="panel"><h2>Executar consulta</h2>
+        <p>Escolha um exemplo ou escreva sua consulta para executá-la no banco de teste e gerar estatísticas.</p>
+        <div class="example-controls"><div class="example-field"><label for="run-example-select">Consulta</label><select id="run-example-select"><option value="">Escolha uma consulta</option></select></div><button id="run-example" type="button" class="button primary" disabled>Executar consulta</button></div>
+        <div id="run-custom-field" class="run-custom-field" hidden><label for="run-custom-sql">Sua consulta SQL</label><textarea id="run-custom-sql" rows="7" spellcheck="false" placeholder="SELECT ..."></textarea><p class="footnote">Use uma consulta SELECT de leitura nas tabelas do banco de teste.</p></div>
         <p id="run-example-description" class="footnote"></p><pre id="run-example-sql" hidden></pre>
         <p class="footnote">A execução pode levar até 30 segundos; os resultados não são exibidos na tela.</p>
         <p id="run-example-status" class="notice info" hidden role="status"></p><p id="run-example-error" class="notice error" hidden role="alert"></p>
