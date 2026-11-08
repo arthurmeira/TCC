@@ -1,8 +1,0 @@
-# Versões reportadas pelo autor no ambiente Windows 64 bits / Python 3.14.3.
-# Registradas a partir da instalação validada, sem executar pip pelo assistente.
-psycopg[binary]==3.3.6
-psycopg-binary==3.3.6
-python-dotenv==1.2.3
-tzdata==2026.4
-
-pglast==8.7

@@ -1,0 +1,12 @@
+{
+  "verified_at": "2026-11-08T20:32:07.945663+00:00",
+  "status": "passed",
+  "checks": [
+    "pg_restore real em banco novo",
+    "SHA-256 de todas as linhas via COPY binário ordenado",
+    "contagens, índices, constraints, colunas, sequências e extensões",
+    "SQLite integrity_check, foreign_key_check e contagens",
+    "SHA-256 dos arquivos"
+  ],
+  "temporary_database_removed": true
+}

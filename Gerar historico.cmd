@@ -7,7 +7,7 @@ echo Pode levar alguns minutos. Os dados das tabelas nao serao alterados.
 echo As novas medicoes serao somadas ao historico existente.
 echo.
 if not exist ".venv\Scripts\python.exe" (
-  echo Ambiente Python nao encontrado. Consulte docs\interface.md.
+  echo Ambiente Python nao encontrado. Consulte README.md.
   pause
   exit /b 1
 )

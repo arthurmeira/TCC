@@ -90,6 +90,8 @@ def correlated_count_proposal(statement):
             or len(sub.targetList or ())!=1):
         return []
     child=sub.fromClause[0]; fn=sub.targetList[0].val
+    if not child.inh:
+        return []  # ONLY não é preservado pela construção da tabela agregada.
     if child.schemaname not in {None,"public"} or not isinstance(fn,ast.FuncCall):
         return []
     if [n.sval for n in fn.funcname] not in [["count"],["pg_catalog","count"]] or not fn.agg_star or fn.agg_filter or fn.over or fn.agg_distinct:

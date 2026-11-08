@@ -16,6 +16,14 @@ __pycache__/
 results/*
 !results/.gitkeep
 
+# Backups binários locais; publicar como pacote separado após revisão
+backups/*
+!backups/README.md
+!backups/manifest-2026-11-08.json
+!backups/verification-2026-11-08.json
+!backups/SHA256SUMS.txt
+/tcc-dados-*.zip
+
 # Configurações de editores
 .vscode/
 .idea/

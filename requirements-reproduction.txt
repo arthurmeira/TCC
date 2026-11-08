@@ -1,0 +1,8 @@
+# Ambiente efetivamente verificado em 2026-11-08, Windows x64 / Python 3.14.7.
+# Alternativa fixada a requirements.txt; nao substitui o lock historico.
+psycopg==3.3.8
+psycopg-binary==3.3.8
+python-dotenv==1.2.4
+pglast==8.7
+sqlglot==30.29.0
+tzdata==2026.6

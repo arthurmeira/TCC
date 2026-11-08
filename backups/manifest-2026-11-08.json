@@ -1,0 +1,687 @@
+{
+  "format_version": 1,
+  "created_at": "2026-11-08T20:31:38.730724+00:00",
+  "database": "tcc_sql_optimizer_logs",
+  "postgresql_version": "18.6",
+  "source_locale": [
+    "UTF8",
+    "Portuguese_Brazil.1252",
+    "Portuguese_Brazil.1252"
+  ],
+  "postgres": {
+    "tables": {
+      "clientes": {
+        "rows": 100000,
+        "copy_binary_sha256": "4c3b5f6cf8585f5f891dc3da91ef49e2b224b0acddfe268325ff8c8f152d07ae"
+      },
+      "produtos": {
+        "rows": 50000,
+        "copy_binary_sha256": "8ca787c73024fdc8fd7a4c50175a8476cee82759686fd69839d00f5eac3acf65"
+      },
+      "pedidos": {
+        "rows": 1000000,
+        "copy_binary_sha256": "916a715cc45b3983fae26fae1fde4ff9341e96c8654242166c94c350ccaaf433"
+      },
+      "itens_pedido": {
+        "rows": 2498714,
+        "copy_binary_sha256": "ba0c0808900914a8e8629c974042f34604ab004db4c460c395de4f739cde74f5"
+      },
+      "pagamentos": {
+        "rows": 1000000,
+        "copy_binary_sha256": "1102275dc1bf76d64e2ccaf0bac971ac9c188663714c2cf377bb0c4e1cc30c6f"
+      }
+    },
+    "indexes": [
+      [
+        "clientes_email_key",
+        "CREATE UNIQUE INDEX clientes_email_key ON public.clientes USING btree (email)"
+      ],
+      [
+        "clientes_pkey",
+        "CREATE UNIQUE INDEX clientes_pkey ON public.clientes USING btree (id)"
+      ],
+      [
+        "itens_pedido_pkey",
+        "CREATE UNIQUE INDEX itens_pedido_pkey ON public.itens_pedido USING btree (id)"
+      ],
+      [
+        "pagamentos_pkey",
+        "CREATE UNIQUE INDEX pagamentos_pkey ON public.pagamentos USING btree (id)"
+      ],
+      [
+        "pedidos_pkey",
+        "CREATE UNIQUE INDEX pedidos_pkey ON public.pedidos USING btree (id)"
+      ],
+      [
+        "produtos_pkey",
+        "CREATE UNIQUE INDEX produtos_pkey ON public.produtos USING btree (id)"
+      ]
+    ],
+    "constraints": [
+      [
+        "clientes",
+        "ck_clientes_estado",
+        "c",
+        "CHECK (((estado)::text ~ '^[A-Z]{2}$'::text))"
+      ],
+      [
+        "clientes",
+        "clientes_ativo_not_null",
+        "n",
+        "NOT NULL ativo"
+      ],
+      [
+        "clientes",
+        "clientes_cidade_not_null",
+        "n",
+        "NOT NULL cidade"
+      ],
+      [
+        "clientes",
+        "clientes_data_cadastro_not_null",
+        "n",
+        "NOT NULL data_cadastro"
+      ],
+      [
+        "clientes",
+        "clientes_email_key",
+        "u",
+        "UNIQUE (email)"
+      ],
+      [
+        "clientes",
+        "clientes_email_not_null",
+        "n",
+        "NOT NULL email"
+      ],
+      [
+        "clientes",
+        "clientes_estado_not_null",
+        "n",
+        "NOT NULL estado"
+      ],
+      [
+        "clientes",
+        "clientes_id_not_null",
+        "n",
+        "NOT NULL id"
+      ],
+      [
+        "clientes",
+        "clientes_nome_not_null",
+        "n",
+        "NOT NULL nome"
+      ],
+      [
+        "clientes",
+        "clientes_pkey",
+        "p",
+        "PRIMARY KEY (id)"
+      ],
+      [
+        "itens_pedido",
+        "ck_itens_pedido_quantidade",
+        "c",
+        "CHECK ((quantidade > 0))"
+      ],
+      [
+        "itens_pedido",
+        "ck_itens_pedido_valor_unitario",
+        "c",
+        "CHECK ((valor_unitario >= (0)::numeric))"
+      ],
+      [
+        "itens_pedido",
+        "fk_itens_pedido_pedido",
+        "f",
+        "FOREIGN KEY (pedido_id) REFERENCES pedidos(id)"
+      ],
+      [
+        "itens_pedido",
+        "fk_itens_pedido_produto",
+        "f",
+        "FOREIGN KEY (produto_id) REFERENCES produtos(id)"
+      ],
+      [
+        "itens_pedido",
+        "itens_pedido_id_not_null",
+        "n",
+        "NOT NULL id"
+      ],
+      [
+        "itens_pedido",
+        "itens_pedido_pedido_id_not_null",
+        "n",
+        "NOT NULL pedido_id"
+      ],
+      [
+        "itens_pedido",
+        "itens_pedido_pkey",
+        "p",
+        "PRIMARY KEY (id)"
+      ],
+      [
+        "itens_pedido",
+        "itens_pedido_produto_id_not_null",
+        "n",
+        "NOT NULL produto_id"
+      ],
+      [
+        "itens_pedido",
+        "itens_pedido_quantidade_not_null",
+        "n",
+        "NOT NULL quantidade"
+      ],
+      [
+        "itens_pedido",
+        "itens_pedido_valor_unitario_not_null",
+        "n",
+        "NOT NULL valor_unitario"
+      ],
+      [
+        "pagamentos",
+        "ck_pagamentos_data",
+        "c",
+        "CHECK ((((status)::text <> ALL (ARRAY[('aprovado'::character varying)::text, ('estornado'::character varying)::text])) OR (data_pagamento IS NOT NULL)))"
+      ],
+      [
+        "pagamentos",
+        "ck_pagamentos_forma",
+        "c",
+        "CHECK (((forma_pagamento)::text = ANY (ARRAY[('pix'::character varying)::text, ('cartao_credito'::character varying)::text, ('cartao_debito'::character varying)::text, ('boleto'::character varying)::text])))"
+      ],
+      [
+        "pagamentos",
+        "ck_pagamentos_status",
+        "c",
+        "CHECK (((status)::text = ANY (ARRAY[('pendente'::character varying)::text, ('aprovado'::character varying)::text, ('recusado'::character varying)::text, ('estornado'::character varying)::text])))"
+      ],
+      [
+        "pagamentos",
+        "ck_pagamentos_valor",
+        "c",
+        "CHECK ((valor > (0)::numeric))"
+      ],
+      [
+        "pagamentos",
+        "fk_pagamentos_pedido",
+        "f",
+        "FOREIGN KEY (pedido_id) REFERENCES pedidos(id)"
+      ],
+      [
+        "pagamentos",
+        "pagamentos_forma_pagamento_not_null",
+        "n",
+        "NOT NULL forma_pagamento"
+      ],
+      [
+        "pagamentos",
+        "pagamentos_id_not_null",
+        "n",
+        "NOT NULL id"
+      ],
+      [
+        "pagamentos",
+        "pagamentos_pedido_id_not_null",
+        "n",
+        "NOT NULL pedido_id"
+      ],
+      [
+        "pagamentos",
+        "pagamentos_pkey",
+        "p",
+        "PRIMARY KEY (id)"
+      ],
+      [
+        "pagamentos",
+        "pagamentos_status_not_null",
+        "n",
+        "NOT NULL status"
+      ],
+      [
+        "pagamentos",
+        "pagamentos_valor_not_null",
+        "n",
+        "NOT NULL valor"
+      ],
+      [
+        "pedidos",
+        "ck_pedidos_status",
+        "c",
+        "CHECK (((status)::text = ANY (ARRAY[('pendente'::character varying)::text, ('pago'::character varying)::text, ('enviado'::character varying)::text, ('entregue'::character varying)::text, ('cancelado'::character varying)::text])))"
+      ],
+      [
+        "pedidos",
+        "ck_pedidos_valor_total",
+        "c",
+        "CHECK ((valor_total >= (0)::numeric))"
+      ],
+      [
+        "pedidos",
+        "fk_pedidos_cliente",
+        "f",
+        "FOREIGN KEY (cliente_id) REFERENCES clientes(id)"
+      ],
+      [
+        "pedidos",
+        "pedidos_cliente_id_not_null",
+        "n",
+        "NOT NULL cliente_id"
+      ],
+      [
+        "pedidos",
+        "pedidos_data_pedido_not_null",
+        "n",
+        "NOT NULL data_pedido"
+      ],
+      [
+        "pedidos",
+        "pedidos_id_not_null",
+        "n",
+        "NOT NULL id"
+      ],
+      [
+        "pedidos",
+        "pedidos_pkey",
+        "p",
+        "PRIMARY KEY (id)"
+      ],
+      [
+        "pedidos",
+        "pedidos_status_not_null",
+        "n",
+        "NOT NULL status"
+      ],
+      [
+        "pedidos",
+        "pedidos_valor_total_not_null",
+        "n",
+        "NOT NULL valor_total"
+      ],
+      [
+        "produtos",
+        "ck_produtos_estoque",
+        "c",
+        "CHECK ((estoque >= 0))"
+      ],
+      [
+        "produtos",
+        "ck_produtos_preco",
+        "c",
+        "CHECK ((preco >= (0)::numeric))"
+      ],
+      [
+        "produtos",
+        "produtos_ativo_not_null",
+        "n",
+        "NOT NULL ativo"
+      ],
+      [
+        "produtos",
+        "produtos_categoria_not_null",
+        "n",
+        "NOT NULL categoria"
+      ],
+      [
+        "produtos",
+        "produtos_estoque_not_null",
+        "n",
+        "NOT NULL estoque"
+      ],
+      [
+        "produtos",
+        "produtos_id_not_null",
+        "n",
+        "NOT NULL id"
+      ],
+      [
+        "produtos",
+        "produtos_nome_not_null",
+        "n",
+        "NOT NULL nome"
+      ],
+      [
+        "produtos",
+        "produtos_pkey",
+        "p",
+        "PRIMARY KEY (id)"
+      ],
+      [
+        "produtos",
+        "produtos_preco_not_null",
+        "n",
+        "NOT NULL preco"
+      ]
+    ],
+    "columns": [
+      [
+        "clientes",
+        "id",
+        "bigint",
+        "NO",
+        null,
+        "YES",
+        "BY DEFAULT"
+      ],
+      [
+        "clientes",
+        "nome",
+        "character varying",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "clientes",
+        "email",
+        "character varying",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "clientes",
+        "cidade",
+        "character varying",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "clientes",
+        "estado",
+        "character varying",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "clientes",
+        "data_cadastro",
+        "timestamp without time zone",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "clientes",
+        "ativo",
+        "boolean",
+        "NO",
+        "true",
+        "NO",
+        null
+      ],
+      [
+        "itens_pedido",
+        "id",
+        "bigint",
+        "NO",
+        null,
+        "YES",
+        "BY DEFAULT"
+      ],
+      [
+        "itens_pedido",
+        "pedido_id",
+        "bigint",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "itens_pedido",
+        "produto_id",
+        "bigint",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "itens_pedido",
+        "quantidade",
+        "integer",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "itens_pedido",
+        "valor_unitario",
+        "numeric",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "pagamentos",
+        "id",
+        "bigint",
+        "NO",
+        null,
+        "YES",
+        "BY DEFAULT"
+      ],
+      [
+        "pagamentos",
+        "pedido_id",
+        "bigint",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "pagamentos",
+        "data_pagamento",
+        "timestamp without time zone",
+        "YES",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "pagamentos",
+        "forma_pagamento",
+        "character varying",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "pagamentos",
+        "valor",
+        "numeric",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "pagamentos",
+        "status",
+        "character varying",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "pedidos",
+        "id",
+        "bigint",
+        "NO",
+        null,
+        "YES",
+        "BY DEFAULT"
+      ],
+      [
+        "pedidos",
+        "cliente_id",
+        "bigint",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "pedidos",
+        "data_pedido",
+        "timestamp without time zone",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "pedidos",
+        "status",
+        "character varying",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "pedidos",
+        "valor_total",
+        "numeric",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "produtos",
+        "id",
+        "bigint",
+        "NO",
+        null,
+        "YES",
+        "BY DEFAULT"
+      ],
+      [
+        "produtos",
+        "nome",
+        "character varying",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "produtos",
+        "categoria",
+        "character varying",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "produtos",
+        "preco",
+        "numeric",
+        "NO",
+        null,
+        "NO",
+        null
+      ],
+      [
+        "produtos",
+        "estoque",
+        "integer",
+        "NO",
+        "0",
+        "NO",
+        null
+      ],
+      [
+        "produtos",
+        "ativo",
+        "boolean",
+        "NO",
+        "true",
+        "NO",
+        null
+      ]
+    ],
+    "sequences": {
+      "public.clientes_id_seq": [
+        100000,
+        true
+      ],
+      "public.produtos_id_seq": [
+        50000,
+        true
+      ],
+      "public.pedidos_id_seq": [
+        1000000,
+        true
+      ],
+      "public.itens_pedido_id_seq": [
+        2498714,
+        true
+      ],
+      "public.pagamentos_id_seq": [
+        1000000,
+        true
+      ]
+    },
+    "extensions": [
+      [
+        "pg_stat_statements",
+        "1.12"
+      ],
+      [
+        "plpgsql",
+        "1.0"
+      ]
+    ]
+  },
+  "sqlite": {
+    "integrity": "ok",
+    "tables": {
+      "events": 0,
+      "experiments": 14,
+      "imports": 0,
+      "observed_statements": 66,
+      "statement_snapshots": 568,
+      "sync_runs": 9
+    }
+  },
+  "notes": [
+    "Dump lógico completo do banco, sem owners/ACLs e sem roles/senhas.",
+    "Contadores ativos de pg_stat_statements não são transportados.",
+    "SQLite consistente via Backup API; PostgreSQL via snapshot exportado.",
+    "As duas cópias são consistentes individualmente, não uma transação distribuída."
+  ],
+  "files": {
+    "logs.sqlite3": {
+      "bytes": 10948608,
+      "sha256": "eb49ead08597deb0bebbef546bfc83c14f52e52cc1b0830dd9853265a63f105b"
+    },
+    "postgresql.dump": {
+      "bytes": 62598050,
+      "sha256": "9425d704d2341342f7c621012ebbc8410a8183cf2f229e108449d1fdef579885"
+    },
+    "postgresql.toc.txt": {
+      "bytes": 2273,
+      "sha256": "f7aaa4e3213cac19071e7234618c448b47009cde836f4315dbb8bbb2c3941c63"
+    },
+    "rodada_12_consultas_20261107.json": {
+      "bytes": 587468,
+      "sha256": "ba900e8a334c91cd76cb84dc2c45ce6bbd61b73d5345f20eecb01c024657a298"
+    }
+  }
+}

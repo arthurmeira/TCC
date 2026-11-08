@@ -3,7 +3,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 title TCC - Logs e otimizacao SQL
 if not exist ".venv\Scripts\python.exe" (
-    echo Ambiente Python nao encontrado. Consulte docs\interface.md.
+    echo Ambiente Python nao encontrado. Consulte README.md.
     pause
     exit /b 1
 )
