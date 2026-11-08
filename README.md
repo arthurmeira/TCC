@@ -1,6 +1,8 @@
 # Observatório SQL
 
-**Análise e otimização de consultas SQL com estatísticas de execução.**
+**ANÁLISE E OTIMIZAÇÃO DE CONSULTAS SQL COM BASE EM
+ESTATÍSTICAS DE EXECUÇÃO EM BANCOS DE DADOS
+RELACIONAIS**
 
 Projeto de TCC de Arthur Meira, do curso de Ciência da Computação da Unesc,
 sob orientação de Marcel Campos Inocencio.
