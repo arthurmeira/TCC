@@ -9,7 +9,7 @@ sob orientação de Marcel Campos Inocencio.
 
 O protótipo permite investigar consultas PostgreSQL, gerar sugestões por regras
 e comparar os resultados e os tempos das versões original e alternativa.
-A interface web funciona localmente em **http://127.0.0.1:8767**.
+A interface web funciona localmente.
 
 ## Conteúdo
 
