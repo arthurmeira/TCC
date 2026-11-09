@@ -11,6 +11,10 @@ O protótipo permite investigar consultas PostgreSQL, gerar sugestões por regra
 e comparar os resultados e os tempos das versões original e alternativa.
 A interface web funciona localmente.
 
+O pacote de dados já acompanha esta versão em [backups/tcc-dados-2026-11-08.zip](backups/tcc-dados-2026-11-08.zip). Para usar a aplicação com o histórico do artigo, siga instalação → configuração → extração do ZIP → restauração dos dois bancos → interface. O diretório `results/` começa vazio; a restauração instala nele o histórico.
+
+Se recebeu a pasta completa, abra o terminal nessa pasta e pule `git clone` e `cd TCC`. A raiz correta contém este README e os diretórios `src/`, `scripts/` e `backups/`. Para apenas conferir os números do artigo, basta preparar o Python e extrair o ZIP; veja [a conferência das amostras](#conferir-as-240-amostras-sem-executar-sql).
+
 ## Conteúdo
 
 - [Instalação e configuração](#instalação-e-configuração)
@@ -74,7 +78,7 @@ Instale o Git antes de clonar: no Windows, use o [instalador oficial do Git](htt
 
 ### 2. Clonar e preparar Python
 
-Execute os comandos na raiz do repositório. Se o GitHub exigir autenticação, o avaliador precisa ter acesso ao projeto.
+Se ainda não tiver a pasta, execute os comandos abaixo para clonar e entrar no repositório. Se o GitHub exigir autenticação, utilize uma conta com acesso ao repositório. Quem já recebeu a pasta completa pode pular esses dois comandos.
 
 ```sh
 git clone https://github.com/arthurmeira/TCC.git
@@ -158,7 +162,7 @@ SHOW shared_preload_libraries;
 SELECT name, default_version FROM pg_available_extensions WHERE name='pg_stat_statements';
 ```
 
-Se a extensão não estiver disponível, instale os módulos adicionais/contrib da versão 18 segundo a distribuição. Edite o `postgresql.conf` indicado por `SHOW config_file`:
+Anote o caminho retornado por `SHOW config_file` e saia do `psql` com `\q` antes de voltar ao terminal. Se a extensão não estiver disponível, instale os módulos adicionais/contrib da versão 18 segundo a distribuição. Edite o `postgresql.conf` indicado por `SHOW config_file` com permissão administrativa:
 
 ```ini
 shared_preload_libraries = 'pg_stat_statements'
@@ -205,9 +209,11 @@ DB_PASSWORD=preencha_com_sua_senha
 DB_CONNECT_TIMEOUT=10
 ```
 
-Use a senha da **sua instalação**. Não existe senha do autor no pacote. Utilize aspas conforme a sintaxe dotenv se houver espaços/caracteres especiais. `.env` é ignorado pelo Git e não integra os backups distribuídos.
+Configure a senha da **sua instalação PostgreSQL**. O pacote não inclui credenciais. Utilize aspas conforme a sintaxe dotenv se houver espaços/caracteres especiais. `.env` é ignorado pelo Git e não integra os backups distribuídos.
 
 **O código exige o nome `tcc_sql_optimizer_logs`.** Alterar apenas o `.env` para outro nome não funciona. Se esse banco já existir, use outra instância/porta PostgreSQL e ajuste `DB_PORT`; não apague nem sobrescreva o banco existente. Variáveis já definidas no ambiente do terminal têm prioridade sobre `.env`.
+
+Os comandos `psql`, `createdb` e `pg_restore` não leem o `.env` do projeto. Se usar outro host, porta ou usuário, ajuste também os argumentos desses comandos apresentados neste guia.
 
 ### 5. Conferir e prosseguir
 
@@ -253,24 +259,28 @@ O dump gerado em 08/11/2026 tem 62.598.050 bytes (59,70 MiB); o SQLite tem 10.94
 
 #### Download e integridade
 
-Obtenha `tcc-dados-2026-11-08.zip` e coloque-o na raiz do clone. Compare seu SHA-256 com [backups/SHA256SUMS.txt](backups/SHA256SUMS.txt).
+Use o ZIP incluído em `backups/tcc-dados-2026-11-08.zip`. Os comandos abaixo verificam seu SHA-256 com [backups/SHA256SUMS.txt](backups/SHA256SUMS.txt) antes de extrair. Se já extraiu esse mesmo pacote com sucesso, pule a extração e continue com a restauração.
 
 Windows:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath .\tcc-dados-2026-11-08.zip
-## Compare o hash antes de extrair.
+$pacoteTcc = '.\backups\tcc-dados-2026-11-08.zip'
+$hashEsperadoTcc = ((Get-Content -LiteralPath .\backups\SHA256SUMS.txt -Raw).Trim() -split '\s+')[0]
+$hashObtidoTcc = (Get-FileHash -Algorithm SHA256 -LiteralPath $pacoteTcc).Hash
+if ($hashObtidoTcc -ne $hashEsperadoTcc) { throw 'SHA-256 diferente; obtenha uma cópia íntegra do pacote.' }
 if (Test-Path -LiteralPath .\backups\2026-11-08) { throw 'Destino já existe; use um clone novo.' }
-Expand-Archive -LiteralPath .\tcc-dados-2026-11-08.zip -DestinationPath .\backups
+Expand-Archive -LiteralPath $pacoteTcc -DestinationPath .\backups
 ```
 
 Linux:
 
 ```bash
-sha256sum tcc-dados-2026-11-08.zip
-## Compare o hash. O ZIP contém a pasta 2026-11-08/.
-test ! -e backups/2026-11-08 && unzip -n tcc-dados-2026-11-08.zip -d backups
+(cd backups && sha256sum --check SHA256SUMS.txt) && \
+  test ! -e backups/2026-11-08 && \
+  unzip -n backups/tcc-dados-2026-11-08.zip -d backups
 ```
+
+Após a extração, os arquivos devem estar em `backups/2026-11-08/`, incluindo `manifest.json`, `postgresql.dump` e `logs.sqlite3`. Se o ZIP estiver ausente, sua cópia está incompleta; obtenha uma cópia completa do repositório ou do pacote de distribuição.
 
 #### Restauração protegida dos dois bancos
 
@@ -315,7 +325,7 @@ psql -h localhost -p 5432 -U postgres -d tcc_sql_optimizer_logs -W -v ON_ERROR_S
 
 Os cinco indicadores de inconsistência da segunda consulta devem ser zero. O SQLite do pacote contém **14 avaliações, 9 sincronizações, 66 consultas observadas e 568 snapshots**. As tabelas `imports` e `events` estão vazias neste pacote; não há lotes de arquivos de log a recuperar.
 
-Na conexão restaurada, confira:
+Abra `psql -h localhost -p 5432 -U postgres -d tcc_sql_optimizer_logs -W` e confira:
 
 ```sql
 SHOW shared_preload_libraries;
@@ -324,6 +334,8 @@ SHOW pg_stat_statements.track;
 SELECT extname,extversion FROM pg_extension WHERE extname='pg_stat_statements';
 SELECT count(*) FROM public.pg_stat_statements;
 ```
+
+Saia com `\q` antes de voltar aos comandos do terminal.
 
 #### Alternativa manual com pg_restore
 
@@ -337,7 +349,7 @@ Não use `--clean`. Conecte-se com `psql -h localhost -p 5432 -U postgres -d tcc
 
 ### 2. Gerar uma base do zero — alternativa sem histórico
 
-Use apenas em banco novo. Essa opção gera dados sintéticos, mas não recupera resultados antigos.
+Use apenas em banco novo. Essa opção gera dados sintéticos, mas não recupera resultados antigos. Ela é uma alternativa à restauração do pacote; não execute os dois caminhos sobre o mesmo banco.
 
 1. Crie `tcc_sql_optimizer_logs` com `createdb`, conforme a seção manual. Se já existir, pare.
 2. Execute cada comando somente após o anterior terminar sem erro:
@@ -355,6 +367,8 @@ O reset de estatísticas no SQL de configuração está comentado e não faz par
 
 ### 3. Criar novos backups
 
+**Limitação conhecida no PostgreSQL 18.1:** na verificação de uma base nova criada por `sql/schema.sql`, a restauração reescreveu casts de arrays em quatro expressões `CHECK`. Os dados e os demais itens do inventário coincidiram, mas a comparação textual das constraints fez `verify` recusar o resultado. Não considere um backup verificado se esse erro ocorrer. Essa limitação foi observada em um backup novo; a restauração integral do pacote distribuído de 08/11/2026 passou na mesma instalação.
+
 Encerre medições/gravações na aplicação antes de capturar os dois bancos. O PostgreSQL usa snapshot exportado e o SQLite usa sua Backup API; são consistentes individualmente, mas não constituem uma transação distribuída.
 
 ```sh
@@ -364,11 +378,11 @@ python -m scripts.backup_databases verify --bundle backups/minha-nova-copia
 
 Acrescente `--pg-bin` quando os binários não estiverem no PATH. `create` recusa pasta existente. `verify` cria um banco de nome aleatório, restaura, compara todas as linhas via SHA-256 de COPY binário ordenado e confere estruturas/sequências/extensões. Remove **somente o banco temporário criado por ele, após sucesso**. Se ocorrer falha, esse banco permanece para diagnóstico. A conta precisa poder criar bancos e extensões.
 
-Inclui o SQLite ativo, JSONs `rodada_*.json` e `results/log_sources/`, se houver. Cópias SQLite antigas não são confundidas com o banco ativo. `.env`, senhas e ambiente virtual não integram o pacote. Os binários em `backups/` são ignorados pelo Git; instruções e comprovantes textuais são versionáveis.
+Inclui o SQLite ativo, JSONs `rodada_*.json` e `results/log_sources/`, se houver. Cópias SQLite antigas não são confundidas com o banco ativo. `.env`, senhas e ambiente virtual não integram o pacote. O `.gitignore` ignora novos backups binários e pastas extraídas; o ZIP de 08/11/2026 já está versionado e acompanha esta versão do repositório.
 
 ### 4. Distribuição e comprovantes
 
-Confira a integridade do pacote em [SHA256SUMS.txt](backups/SHA256SUMS.txt). O pacote ainda não está disponível para download público. O pacote preserva as 240 amostras da rodada do artigo e permite abrir os resultados sem gerar milhões de registros novamente.
+A distribuição do projeto deve incluir [o ZIP de dados](backups/tcc-dados-2026-11-08.zip) e [SHA256SUMS.txt](backups/SHA256SUMS.txt). O pacote preserva as 240 amostras da rodada do artigo e permite abrir os resultados sem gerar milhões de registros novamente. Os arquivos `.env` e `.venv` são locais e não integram a distribuição. Cada instalação utiliza seu próprio ambiente.
 
 ### 5. Verificação dos dados
 
@@ -387,7 +401,7 @@ O pacote de 08/11/2026 foi restaurado em banco novo na instalação local e comp
 
 ## Utilização, testes e experimentos
 
-**Antes de começar:** finalize a [instalação](#instalação-e-configuração) e a [restauração dos dois bancos](#bancos-de-dados-e-backups). Os comandos são executados na raiz do clone. `python` significa `.\.venv\Scripts\python.exe` no Windows ou `.venv/bin/python` no Linux.
+**Para executar novas consultas:** finalize a [instalação](#instalação-e-configuração) e a [restauração dos dois bancos](#bancos-de-dados-e-backups), ou gere uma base nova pelo caminho alternativo. Os testes automatizados e a conferência do JSON salvo dispensam PostgreSQL. Os comandos são executados na raiz do clone. `python` significa `.\.venv\Scripts\python.exe` no Windows ou `.venv/bin/python` no Linux.
 
 ### 1. Iniciar e utilizar
 
@@ -417,11 +431,14 @@ O JSON isolado não é importado pela interface; é o SQLite que fornece os rela
 #### Executar e investigar consultas
 
 1. Em **Consultas SQL**, selecione C01–C12 ou uma consulta própria e clique em **Executar consulta**. O SELECT é realmente executado, mas as linhas não são exibidas.
-2. Clique em **Atualizar consultas**. Também é possível executar SQL no DBeaver/psql, conectado à mesma instância e banco.
+2. A execução pela interface tenta atualizar a listagem automaticamente. Use **Atualizar consultas** para atualizar novamente ou coletar consultas executadas no DBeaver/psql, conectado à mesma instância e banco.
 3. Ordene por tempo, frequência ou data e clique em **Investigar**.
-4. Examine métricas, plano e alertas. Quando houver `$1`, `$2` etc., informe a lista JSON na ordem mostrada no SQL. Exemplos: `[1, 10]` para o intervalo da C03; `[2025]` para ano; `["cliente123@example.com"]` para e-mail.
-5. Leia as condições da proposta. O botão **Medir ganho** realiza uma rodada curta de três medições por versão.
-6. Para dez repetições, utilize a comparação completa quando disponibilizada, ou o script de [reprodução experimental](#2-testes-e-reprodução-dos-experimentos). **Comparar planos** estima; **Executar e medir** executa ambas as versões e salva uma nova avaliação.
+4. Examine métricas, plano e alertas. Quando houver `$1`, `$2` etc., preencha **cada campo com um valor simples**, seguindo a posição no SQL. Na C03, informe `1` no campo `$1` e `10` no `$2`; para e-mail, informe `cliente123@example.com`. Se aparecer `EXTRACT($1 FROM data_pedido) = $2`, informe `year` no `$1` e `2025` no `$2`. Não cole listas JSON nesses campos. Use `null` para nulo; `*` não significa “todos”.
+5. Clique em **Propor otimização** e leia as condições e o SQL sugerido. Essa etapa examina planos e pode consultar metadados e condições dos dados; ainda não mede comparativamente as duas versões.
+6. Selecione **Repetições por versão** (3, 10, 30 ou 50) e clique em **Medir desempenho**. Para seguir o número de repetições do artigo, escolha **10**. A aplicação verifica os resultados, aquece, mede ambas as versões e salva a avaliação no histórico.
+7. Se alterar os parâmetros, clique novamente em **Propor otimização**. Sem alternativa executável, a medição permanece desabilitada. Uma sugestão de índice exige avaliação própria.
+
+Para executar os 12 casos em sequência, use o script de [reprodução experimental](#2-testes-e-reprodução-dos-experimentos). As telas auxiliares **Comparar planos / Executar e medir** não estão na navegação principal atual e não são necessárias a esse roteiro.
 
 `Atualizar consultas` não executa os SELECTs observados e não reseta estatísticas. `pg_stat_statements` agrupa chamadas por estrutura e não recupera os valores literais originais nem identifica a ferramenta que executou cada chamada.
 
@@ -446,7 +463,25 @@ python -m unittest discover -s tests -v
 
 Em 08/11/2026, os **62 testes existentes e oito testes novos passaram (70 no total)**. A suíte utiliza conexões simuladas e SQLite temporário; não substitui o teste de restauração real. Os testes dos novos utilitários estão em `tests/test_backup_tools.py`.
 
+Esses testes não exigem `.env`, PostgreSQL ativo ou restauração. O resultado esperado nesta versão é `Ran 70 tests`, seguido de `OK`.
+
 #### Conferir as 240 amostras sem executar SQL
+
+Após instalar as dependências Python e extrair o ZIP, é possível conferir diretamente o arquivo do pacote, sem configurar `.env` ou PostgreSQL:
+
+Windows:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.reproduce_experiment --check-saved backups/2026-11-08/rodada_12_consultas_20261107.json
+```
+
+Linux:
+
+```bash
+.venv/bin/python -m scripts.reproduce_experiment --check-saved backups/2026-11-08/rodada_12_consultas_20261107.json
+```
+
+Se já restaurou os bancos, também pode usar a cópia instalada em `results/`:
 
 ```sh
 python -m scripts.reproduce_experiment --check-saved results/rodada_12_consultas_20261107.json
@@ -470,16 +505,19 @@ Os exemplos **C01–C12** são os casos do artigo. `sql/queries.sql` e `scripts/
 python -m scripts.generate_workload --preview
 ```
 
+O atalho Windows **Gerar historico.cmd** executa a carga Q01–Q12, com 730 execuções. Ele gera atividade no PostgreSQL; depois, clique em **Atualizar consultas** para coletá-la. Esse atalho não cria avaliações comparativas no **Histórico de medições**. Para reproduzir C01–C12 e criar avaliações, use `python -m scripts.reproduce_experiment --run`.
+
 ### 3. Módulos opcionais de logs
 
-O projeto também possui módulos/API para importar logs PostgreSQL stderr, CSV e JSON, separados das estatísticas agregadas. Esses controles não estão expostos na navegação principal atual. Para a banca, utilize a fonte PostgreSQL descrita neste guia; a configuração opcional de captura consta no [guia de instalação](#instalação-e-configuração).
+O projeto também possui módulos/API para importar logs PostgreSQL stderr, CSV e JSON, separados das estatísticas agregadas. Esses controles não estão expostos na navegação principal atual. O fluxo principal utiliza as estatísticas do PostgreSQL; a configuração opcional de captura consta no [guia de instalação](#instalação-e-configuração).
 
 ### Problemas durante o uso
 
 | Sintoma | Solução |
 |---|---|
 | Lista vazia após atualizar | Os contadores da nova instância não são os antigos. Execute exemplo e atualize; medições salvas permanecem. |
-| Parâmetros `$1`, `$2` | Informe valores como lista JSON na ordem do SQL. |
+| Parâmetros `$1`, `$2` | Preencha cada campo com um valor simples, na ordem do SQL; não cole uma lista JSON. |
+| Medição desabilitada | Preencha os parâmetros e clique em **Propor otimização**; a medição exige uma reescrita executável. |
 | Sem proposta automática | O padrão está fora das regras ou faltam condições; isso não é erro de instalação. |
 | Tempo limite/resultados diferentes | Examine o SQL e reduza o recorte. O sistema interrompe medições sem correspondência validada. |
 | Porta 8767 ocupada | Use `--port 8770`; não encerre processos desconhecidos. |
